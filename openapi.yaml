@@ -21,6 +21,14 @@ tags:
     description: Liveness check
   - name: Scrape
     description: JustWatch scraping
+  - name: Years
+    description: >
+      Managing which films exist for a given year, independent of scraping
+      their offers. Currently backed by data.json -- writes only succeed
+      where the filesystem is writable (local dev), not on Vercel's
+      read-only production filesystem. This is expected to move to a real
+      database (Supabase) later; the request/response shapes are designed
+      to survive that move unchanged.
 
 paths:
   /api/health:
@@ -184,6 +192,135 @@ paths:
                 service: []
                 error: "HTTPSConnectionPool(host='www.justwatch.com', port=443): Read timed out."
 
+  /api/years/{year}:
+    parameters:
+      - name: year
+        in: path
+        required: true
+        description: A 4-digit year, e.g. `2026`.
+        schema:
+          type: string
+          pattern: "^\\d{4}$"
+        example: "2026"
+    put:
+      operationId: replaceYear
+      tags: [Years]
+      summary: Replace a year's entire film list
+      description: >
+        Idempotent: PUT the same body twice, same result. Replaces
+        whatever film list currently exists for `year` (or creates it, if
+        it doesn't exist yet) with exactly the films given. Each film only
+        needs `title`; `date` is optional. The server always computes
+        `id` itself (`year * 100 + day-of-month`, or a random value > 31
+        if `date` is omitted) and always starts `service` as `[]` --
+        offers only come from `/api/scrape`. Any `id`/`service`/`error`
+        fields in the request body are ignored. Validates the entire list
+        before writing anything: one bad film fails the whole request,
+        nothing is partially written.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/FilmInput"
+            example:
+              - title: "Some 2026 Movie"
+                date: "10/1/2026"
+              - title: "Another 2026 Movie"
+                date: "10/2/2026"
+                justwatch_url: "https://www.justwatch.com/us/movie/another-2026-movie"
+      responses:
+        "200":
+          description: The year's new film list, as stored (with computed ids).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FilmEntry"
+        "400":
+          description: >
+            Malformed request: body isn't a JSON array, a film is missing
+            `title`, `date` doesn't match `M/D/YYYY`, `date`'s year
+            doesn't match the `{year}` path parameter, the day is out of
+            1-31, or two films in the list share the same `date`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or incorrect `X-API-Key` header.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: >
+            Could not persist the change -- most likely because the
+            filesystem is read-only (e.g. Vercel production). Works in
+            local dev.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "Could not write data.json: [Errno 30] Read-only file system. This endpoint needs a writable filesystem..."
+    post:
+      operationId: addFilm
+      tags: [Years]
+      summary: Add a single film to a year's list
+      description: >
+        Appends one new film to `year`'s existing list (creating `year` if
+        it doesn't exist yet). Unlike PUT, this does not touch any film
+        already in the list. Rejected with 400 if the given `date`
+        collides with a film already in that year.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FilmInput"
+            example:
+              title: "A Late Addition"
+              date: "10/15/2026"
+      responses:
+        "201":
+          description: The newly created film entry, with its computed id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FilmEntry"
+        "400":
+          description: >
+            Malformed request: body isn't a JSON object, missing `title`,
+            invalid `date`, or `date` collides with a film already in
+            `year`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or incorrect `X-API-Key` header.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: >
+            Could not persist the change -- most likely because the
+            filesystem is read-only (e.g. Vercel production). Works in
+            local dev.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -230,6 +367,31 @@ components:
           type: string
           format: uri
           nullable: true
+
+    FilmInput:
+      type: object
+      description: >
+        What the caller supplies to PUT/POST `/api/years/{year}`. The
+        server computes `id` and `service` itself -- don't send them (they
+        are ignored if present).
+      required: [title]
+      properties:
+        title:
+          type: string
+          description: Non-empty; leading/trailing whitespace is trimmed.
+          example: "Some 2026 Movie"
+        date:
+          type: string
+          description: >
+            `M/D/YYYY`, where YYYY must match the `{year}` path parameter
+            and D must be 1-31. Omit entirely (or send `""`) for a film
+            with no set date yet -- it gets a random id instead of a
+            real calendar day.
+          example: "10/1/2026"
+        justwatch_url:
+          type: string
+          format: uri
+          description: Optional. Same override as in data.json -- see FilmEntry.
 
     FilmEntry:
       type: object
