@@ -1,6 +1,9 @@
+import json
+
 import requests
 import responses
 
+import app as app_module
 from helpers import load_fixture
 
 JUSTWATCH_BASE = "https://www.justwatch.com/us/movie/"
@@ -225,3 +228,221 @@ class TestFullScrape:
 
         assert resp.status_code == 200
         assert resp.get_json()["someFlag"] is True
+
+
+class TestPutYear:
+    def test_missing_auth_returns_401(self, client, api_key):
+        resp = client.put("/api/years/2026", json=[])
+        assert resp.status_code == 401
+
+    def test_non_four_digit_year_returns_400(self, client, auth_headers):
+        resp = client.put("/api/years/26", json=[], headers=auth_headers)
+        assert resp.status_code == 400
+
+    def test_non_list_body_returns_400(self, client, auth_headers, data_file):
+        data_file({})
+        resp = client.put("/api/years/2026", json={"not": "a list"}, headers=auth_headers)
+        assert resp.status_code == 400
+
+    def test_item_missing_title_returns_400(self, client, auth_headers, data_file):
+        data_file({})
+        resp = client.put("/api/years/2026", json=[{"date": "10/1/2026"}], headers=auth_headers)
+        assert resp.status_code == 400
+        assert "title" in resp.get_json()["error"]
+
+    def test_invalid_date_format_returns_400(self, client, auth_headers, data_file):
+        data_file({})
+        resp = client.put(
+            "/api/years/2026",
+            json=[{"title": "X", "date": "October 1st"}],
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+
+    def test_date_year_mismatch_returns_400(self, client, auth_headers, data_file):
+        data_file({})
+        resp = client.put(
+            "/api/years/2026",
+            json=[{"title": "X", "date": "10/1/2025"}],
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+
+    def test_day_out_of_range_returns_400(self, client, auth_headers, data_file):
+        data_file({})
+        resp = client.put(
+            "/api/years/2026",
+            json=[{"title": "X", "date": "10/35/2026"}],
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+
+    def test_duplicate_date_within_payload_returns_400(self, client, auth_headers, data_file):
+        path = data_file({})
+        resp = client.put(
+            "/api/years/2026",
+            json=[
+                {"title": "First", "date": "10/1/2026"},
+                {"title": "Second", "date": "10/1/2026"},
+            ],
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "duplicate" in resp.get_json()["error"].lower()
+        # Nothing should have been written on a validation failure.
+        assert json.loads(path.read_text()) == {}
+
+    def test_success_computes_ids_and_persists(self, client, auth_headers, data_file):
+        path = data_file({"2025": [{"id": 202501, "date": "10/1/2025", "title": "Old", "service": []}]})
+
+        resp = client.put(
+            "/api/years/2026",
+            json=[
+                {"title": "Film One", "date": "10/1/2026"},
+                {"title": "Film Two", "date": "10/2/2026", "justwatch_url": "https://www.justwatch.com/us/movie/film-two"},
+            ],
+            headers=auth_headers,
+        )
+
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body[0] == {"id": 202601, "date": "10/1/2026", "title": "Film One", "service": []}
+        assert body[1]["id"] == 202602
+        assert body[1]["justwatch_url"] == "https://www.justwatch.com/us/movie/film-two"
+
+        on_disk = json.loads(path.read_text())
+        assert on_disk["2026"] == body
+        # Existing years are untouched.
+        assert on_disk["2025"][0]["title"] == "Old"
+
+    def test_missing_date_gets_overflow_id(self, client, auth_headers, data_file):
+        data_file({})
+        resp = client.put("/api/years/2026", json=[{"title": "No Date Yet"}], headers=auth_headers)
+        assert resp.status_code == 200
+        film_id = resp.get_json()[0]["id"]
+        assert 202632 <= film_id <= 202699
+
+    def test_fully_replaces_existing_year(self, client, auth_headers, data_file):
+        path = data_file({"2026": [{"id": 202601, "date": "10/1/2026", "title": "Stale", "service": []}]})
+        resp = client.put(
+            "/api/years/2026",
+            json=[{"title": "Fresh", "date": "10/1/2026"}],
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        on_disk = json.loads(path.read_text())
+        titles = [f["title"] for f in on_disk["2026"]]
+        assert titles == ["Fresh"]
+
+    def test_empty_list_is_allowed(self, client, auth_headers, data_file):
+        data_file({})
+        resp = client.put("/api/years/2026", json=[], headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.get_json() == []
+
+    def test_caller_supplied_id_and_service_are_ignored(self, client, auth_headers, data_file):
+        data_file({})
+        resp = client.put(
+            "/api/years/2026",
+            json=[{"title": "X", "date": "10/1/2026", "id": 999999, "service": [{"name": "fake"}]}],
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        entry = resp.get_json()[0]
+        assert entry["id"] == 202601
+        assert entry["service"] == []
+
+    def test_write_failure_returns_500(self, client, auth_headers, data_file, monkeypatch):
+        data_file({})
+
+        def _boom(_data):
+            raise OSError("Read-only file system")
+
+        monkeypatch.setattr(app_module, "_save_data", _boom)
+
+        resp = client.put("/api/years/2026", json=[{"title": "X", "date": "10/1/2026"}], headers=auth_headers)
+
+        assert resp.status_code == 500
+        assert "Could not write data.json" in resp.get_json()["error"]
+
+
+class TestPostYear:
+    def test_missing_auth_returns_401(self, client, api_key):
+        resp = client.post("/api/years/2026", json={"title": "X"})
+        assert resp.status_code == 401
+
+    def test_non_four_digit_year_returns_400(self, client, auth_headers):
+        resp = client.post("/api/years/26", json={"title": "X"}, headers=auth_headers)
+        assert resp.status_code == 400
+
+    def test_non_dict_body_returns_400(self, client, auth_headers, data_file):
+        data_file({})
+        resp = client.post("/api/years/2026", json=[{"title": "X"}], headers=auth_headers)
+        assert resp.status_code == 400
+
+    def test_missing_title_returns_400(self, client, auth_headers, data_file):
+        data_file({})
+        resp = client.post("/api/years/2026", json={"date": "10/1/2026"}, headers=auth_headers)
+        assert resp.status_code == 400
+
+    def test_appends_to_existing_year_without_disturbing_other_entries(self, client, auth_headers, data_file):
+        path = data_file({
+            "2026": [{"id": 202601, "date": "10/1/2026", "title": "Existing", "service": []}],
+        })
+
+        resp = client.post(
+            "/api/years/2026",
+            json={"title": "New Film", "date": "10/2/2026"},
+            headers=auth_headers,
+        )
+
+        assert resp.status_code == 201
+        assert resp.get_json() == {"id": 202602, "date": "10/2/2026", "title": "New Film", "service": []}
+
+        on_disk = json.loads(path.read_text())
+        titles = [f["title"] for f in on_disk["2026"]]
+        assert titles == ["Existing", "New Film"]
+
+    def test_creates_year_if_it_does_not_exist_yet(self, client, auth_headers, data_file):
+        path = data_file({})
+        resp = client.post(
+            "/api/years/2027",
+            json={"title": "First Of 2027", "date": "10/1/2027"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        on_disk = json.loads(path.read_text())
+        assert len(on_disk["2027"]) == 1
+
+    def test_duplicate_date_against_existing_entry_returns_400(self, client, auth_headers, data_file):
+        path = data_file({
+            "2026": [{"id": 202601, "date": "10/1/2026", "title": "Existing", "service": []}],
+        })
+        resp = client.post(
+            "/api/years/2026",
+            json={"title": "Collides", "date": "10/1/2026"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        # Nothing should have been appended on a validation failure.
+        on_disk = json.loads(path.read_text())
+        assert len(on_disk["2026"]) == 1
+
+    def test_missing_date_gets_overflow_id_not_colliding_with_existing_overflow_ids(self, client, auth_headers, data_file):
+        data_file({"2026": [{"id": 202645, "date": "", "title": "Already Overflow", "service": []}]})
+        resp = client.post("/api/years/2026", json={"title": "Another No-Date"}, headers=auth_headers)
+        assert resp.status_code == 201
+        assert resp.get_json()["id"] != 202645
+
+    def test_write_failure_returns_500(self, client, auth_headers, data_file, monkeypatch):
+        data_file({})
+
+        def _boom(_data):
+            raise OSError("Read-only file system")
+
+        monkeypatch.setattr(app_module, "_save_data", _boom)
+
+        resp = client.post("/api/years/2026", json={"title": "X", "date": "10/1/2026"}, headers=auth_headers)
+
+        assert resp.status_code == 500
+        assert "Could not write data.json" in resp.get_json()["error"]

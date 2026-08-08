@@ -133,6 +133,36 @@ Review the response and copy the parts you want into `data.json` yourself
 (or script that step separately). This is deliberate: a bad scrape should
 never be able to silently overwrite real data.
 
+### `PUT /api/years/<year>` and `POST /api/years/<year>`
+
+Unlike `/api/scrape`, **these do write to `data.json`** — they manage which
+films exist for a year, independent of scraping their offers. `PUT`
+replaces a year's entire film list (idempotent — send the same body twice,
+same result); `POST` appends a single film to a year's existing list
+without touching the rest. Both need only `title` per film (`date` is
+optional); the server always computes `id` itself
+(`year * 100 + day-of-month`, or a random value >31 if `date` is omitted)
+and always starts `service` as `[]` — offers only ever come from
+`/api/scrape`.
+
+```bash
+curl -X PUT -H "X-API-Key: $ADMIN_API_KEY" -H "Content-Type: application/json" \
+  -d '[{"title": "Some 2026 Movie", "date": "10/1/2026"}, {"title": "Another One", "date": "10/2/2026"}]' \
+  http://127.0.0.1:5000/api/years/2026
+
+curl -X POST -H "X-API-Key: $ADMIN_API_KEY" -H "Content-Type: application/json" \
+  -d '{"title": "A Late Addition", "date": "10/15/2026"}' \
+  http://127.0.0.1:5000/api/years/2026
+```
+
+**Important:** these only work where the filesystem is writable — local
+dev, not Vercel's read-only production filesystem. A write there comes
+back as a clean `500` rather than crashing, but it won't actually persist.
+This is intentional: it's a stepping stone toward writing to a real
+database (Supabase) instead of `data.json`, and the request/response
+shapes are designed to survive that move unchanged — see `_load_data()` /
+`_save_data()` in `app.py`, the one seam that migration needs to replace.
+
 ## Data format
 
 `data.json` is a dict keyed by year (`"2024"`, `"2025"`, ...) plus a
