@@ -1,0 +1,12 @@
+<!doctype html>
+<!--
+  window.__APOLLO_STATE__ is present but its JSON is truncated/invalid.
+  Used to test that _extract_json_var raises ScrapeError on a parse
+  failure instead of an uncaught json.JSONDecodeError.
+-->
+<html>
+  <head><title>fixture: malformed apollo state</title></head>
+  <body>
+    <script data-vue-ssr-data>window.__APOLLO_STATE__={"defaultClient": {"Url:abc": {"fullPath": "/us/movie/broken"</script>
+  </body>
+</html>

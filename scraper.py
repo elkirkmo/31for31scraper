@@ -158,7 +158,9 @@ def scrape_title(title, session=None, url=None):
             "link": offer.get("standardWebURL") or offer.get("preAffiliatedStandardWebURL"),
         })
 
-    return {"title": title, "url": url, "service": services}
+    # Report the canonical URL we actually landed on, not the guessed one --
+    # matters when JustWatch redirected us to a different slug.
+    return {"title": title, "url": resp.url, "service": services}
 
 
 def _scrape_title_safe(title_and_url):

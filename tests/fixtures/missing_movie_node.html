@@ -1,0 +1,12 @@
+<!doctype html>
+<!--
+  The Url entity resolves and its fullPath matches, but the Movie entity
+  its "node" ref points to isn't in the cache. Used to test the
+  "Could not locate movie data" ScrapeError branch.
+-->
+<html>
+  <head><title>fixture: missing movie node</title></head>
+  <body>
+    <script data-vue-ssr-data>window.__APOLLO_STATE__={"defaultClient": {"Url:ghost": {"fullPath": "/us/movie/ghost-title", "node": {"type": "id", "generated": false, "id": "Movie:doesnotexist", "typename": "Movie"}}}}</script>
+  </body>
+</html>

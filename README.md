@@ -48,6 +48,32 @@ python app.py
 
 Starts the Flask dev server on `http://127.0.0.1:5000`.
 
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+Useful variants while iterating:
+
+```bash
+pytest -v                    # verbose: one line per test
+pytest tests/test_scraper.py # just the scraper unit tests
+pytest tests/test_app.py     # just the Flask endpoint tests
+pytest -k redirect           # only tests matching a keyword
+```
+
+All HTTP calls to JustWatch are mocked (via `responses`) using fixtures in
+`tests/fixtures/` — the tests never hit the network. Most of those fixtures
+are real JustWatch page data (scraped and trimmed down to just the entities
+`scraper.py` reads, so they stay faithful to the real response shape without
+carrying megabytes of unrelated recommendation data); a few edge-case
+fixtures (malformed/missing data) are hand-written since they simulate page
+shapes JustWatch doesn't currently serve. `requirements-dev.txt` is kept
+separate from `requirements.txt` so `pytest`/`responses` don't get bundled
+into the Vercel deployment.
+
 ## API
 
 ### `GET /api/scrape`
