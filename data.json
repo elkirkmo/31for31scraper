@@ -1,0 +1,667 @@
+{
+    "2025": [
+        {
+            "date": "10/1/2025",
+            "title": "The Thing From Another World",
+            "service": [
+                {
+                    "name": "Tubi",
+                    "link": "https://tubitv.com/movies/100001605/the-thing-from-another-world"
+                }
+            ]
+        },
+        {
+            "date": "10/2/2025",
+            "title": "Blood Feast",
+            "service": [
+                {
+                    "name": "Tubi",
+                    "link": "https://tubitv.com/movies/611668/blood-feast"
+                }
+            ]
+        },
+        {
+            "date": "10/3/2025",
+            "title": "Exorcist II: the Heretic",
+            "service": [
+                {
+                    "name": "Tubi",
+                    "link": "https://tubitv.com/movies/100045148/exorcist-ii-the-heretic"
+                }
+            ]
+        },
+        {
+            "date": "10/4/2025",
+            "title": "Blood Diner",
+            "service": [
+                {
+                    "name": "Tubi",
+                    "link": "https://tubitv.com/movies/555863/blood-diner"
+                }
+            ]
+        },
+        {
+            "date": "10/5/2025",
+            "title": "Tales from the Crypt: Demon Knight",
+            "service": [
+                {
+                    "name": "Youtube",
+                    "link": "https://www.youtube.com/watch?v=SZJdMseh8hY&rco=1"
+                }
+            ]
+        },
+        {
+            "date": "10/6/2025",
+            "title": "The Strangers (2008)",
+            "service": [
+                {
+                    "name": "Netflix",
+                    "link": "https://www.netflix.com/watch/70060008?source=35"
+                }
+            ]
+        },
+        {
+            "date": "10/7/2025",
+            "title": "Sinister",
+            "service": [
+                {
+                    "name": "Tubi",
+                    "link": "https://tubitv.com/movies/307757/sinister"
+                }
+            ]
+        },
+        {
+            "date": "10/8/2025",
+            "title": "Frenzy",
+            "service": [
+                {
+                    "name": "Tubi",
+                    "link": "https://tubitv.com/movies/100043649/frenzy"
+                }
+            ]
+        },
+        {
+            "date": "10/9/2025",
+            "title": "Nightbreed",
+            "service": [
+                {
+                    "name": "Tubi",
+                    "link": "https://tubitv.com/movies/364837/nightbreed-director-s-cut"
+                }
+            ]
+        },
+        {
+            "date": "10/10/2025",
+            "title": "Night of the Living Dead",
+            "service": [
+                {
+                    "name": "Tubi",
+                    "link": "https://tubitv.com/movies/675222/night-of-the-living-dead"
+                }
+            ]
+        },
+        {
+            "date": "10/11/2025",
+            "title": "Repossessed",
+            "service": []
+        },
+        {
+            "date": "10/12/2025",
+            "title": "Wes Craven's New Nightmare",
+            "justwatch_url": "https://www.justwatch.com/us/movie/wes-cravens-new-nightmare",
+            "service": []
+        },
+        {
+            "date": "10/13/2025",
+            "title": "Friday the 13th: The Final Chapter",
+            "service": [
+                {
+                    "name": "AMC+",
+                    "link": "www.amcplus.com/watch/movies/friday-the-13th-the-final-chapter--1053657"
+                }
+            ]
+        },
+        {
+            "date": "10/14/2025",
+            "title": "The Gate",
+            "service": [
+                {
+                    "name": "Tubi",
+                    "link": "https://tubitv.com/movies/376092/the-gate"
+                }
+            ]
+        },
+        {
+            "date": "10/15/2025",
+            "title": "Body Bags",
+            "service": [
+                {
+                    "name": "Tubi",
+                    "link": "https://tubitv.com/movies/282406/body-bags"
+                }
+            ]
+        },
+        {
+            "date": "10/16/2025",
+            "title": "Witching & Bitching",
+            "justwatch_url": "https://www.justwatch.com/us/movie/witching-and-bitching",
+            "service": [
+                {
+                    "name": "Xumo",
+                    "link": "https://play.xumo.com/free-movies/witching-and-bitching/XM00R9UHBL7OEH"
+                }
+            ]
+        },
+        {
+            "date": "10/17/2025",
+            "title": "THe Beast WIthin",
+            "service": [
+                {
+                    "name": "Tubi",
+                    "link": "https://tubitv.com/movies/100011710/the-beast-within"
+                }
+            ]
+        },
+        {
+            "date": "10/18/2025",
+            "title": "Kill List",
+            "service": [
+                {
+                    "name": "Tubi",
+                    "link": "https://tubitv.com/movies/100000674/kill-list"
+                }
+            ]
+        },
+        {
+            "date": "10/19/2025",
+            "title": "Dracula (1958)",
+            "justwatch_url": "https://www.justwatch.com/us/movie/dracula-1958",
+            "service": [
+                {
+                    "name": "Tubi",
+                    "link": "https://tubitv.com/movies/100046628/horror-of-dracula"
+                }
+            ]
+        },
+        {
+            "date": "10/20/2025",
+            "title": "Stir of Echoes",
+            "justwatch_url": "https://www.justwatch.com/us/movie/stir-of-echoes",
+            "service": [
+                {
+                    "name": "Tubi",
+                    "link": "https://tubitv.com/movies/313931/stir-of-echoes"
+                }
+            ]
+        },
+        {
+            "date": "10/21/2025",
+            "title": "Grave Encounters",
+            "service": [
+                {
+                    "name": "Tubi",
+                    "link": "https://tubitv.com/movies/512267/grave-encounters"
+                }
+            ]
+        },
+        {
+            "date": "10/22/2025",
+            "title": "The Hitcher",
+            "service": [
+                {
+                    "name": "Hulu",
+                    "link": "https://www.hulu.com/movie/the-hitcher-e58f85b6-b6a0-4e1b-935b-7a45f9bcd357"
+                }
+            ]
+        },
+        {
+            "date": "10/23/2025",
+            "title": "American Mary",
+            "service": [
+                {
+                    "name": "Tubi",
+                    "link": "https://tubitv.com/movies/496348/american-mary"
+                }
+            ]
+        },
+        {
+            "date": "10/24/2025",
+            "title": "Sleepaway Camp II: Unhappy Campers",
+            "justwatch_url": "https://www.justwatch.com/us/movie/sleepaway-camp-ii-unhappy-campers",
+            "service": [
+                {
+                    "name": "Tubi",
+                    "link": "https://tubitv.com/movies/302252/sleepaway-camp-ii-unhappy-campers"
+                }
+            ]
+        },
+        {
+            "date": "10/25/2025",
+            "title": "Thanksgiving",
+            "service": [
+                {
+                    "name": "hulu",
+                    "link": "https://www.hulu.com/movie/thanksgiving-a6d8b216-4f60-40fd-93b8-8a0929606543"
+                }
+            ]
+        },
+        {
+            "date": "10/26/2025",
+            "title": "Event Horizon",
+            "justwatch_url": "https://www.justwatch.com/us/movie/event-horizon-1997",
+            "service": [
+                {
+                    "name": "Pluto",
+                    "link": "https://pluto.tv/us/on-demand/movies/6331f6b848fe5f0013fae4fa?utm_medium=textsearch&utm_source=google"
+                }
+            ]
+        },
+        {
+            "date": "10/27/2025",
+            "title": "Dead Snow",
+            "service": [
+                {
+                    "name": "Plex",
+                    "link": "https://watch.plex.tv/watch/movie/dead-snow?uri=provider%3A%2F%2Ftv.plex.provider.vod%2Flibrary%2Fmetadata%2F5d77683beb5d26001f1e2297&autoplay=1"
+                }
+            ]
+        },
+        {
+            "date": "10/28/2025",
+            "title": "Videodrome",
+            "service": []
+        },
+        {
+            "date": "10/29/2025",
+            "title": "Creepshow",
+            "service": []
+        },
+        {
+            "date": "10/30/2025",
+            "title": "Black Phone 2",
+            "justwatch_url": "https://www.justwatch.com/us/movie/the-black-phone-2",
+            "service": []
+        },
+        {
+            "date": "10/31/2025",
+            "title": "Halloween III: Season of the Witch",
+            "justwatch_url": "https://www.justwatch.com/us/movie/halloween-iii-season-of-the-witch",
+            "service": []
+        }
+    ],
+    "2024": [
+        {
+            "date": "10/1/2024",
+            "title": "Trick R Treat",
+            "service": [
+                {
+                    "name": "Max",
+                    "link": "https://play.max.com/movie/66a5740a-6512-430b-a174-6c70e3a47907"
+                }
+            ]
+        },
+        {
+            "date": "10/2/2024",
+            "title": "Hatchet",
+            "justwatch_url": "https://www.justwatch.com/us/movie/hatchet-unrated",
+            "service": [
+                {
+                    "name": "Plex",
+                    "link": "https://watch.plex.tv/watch/movie/hatchet?uri=provider%3A%2F%2Ftv.plex.provider.vod%2Flibrary%2Fmetadata%2F5d9f3500d5fd3f001ee150ca"
+                }
+            ]
+        },
+        {
+            "date": "10/3/2024",
+            "title": "Hatchet 2",
+            "service": [
+                {
+                    "name": "Prime",
+                    "link": "https://watch.amazon.com/watch?asin=B00D1XBDYK"
+                },
+                {
+                    "name": "Roku",
+                    "link": "https://therokuchannel.roku.com/watch/860d58f70b3d5cee95953c7c9a333012"
+                }
+            ]
+        },
+        {
+            "date": "10/4/2024",
+            "title": "13 Ghosts",
+            "service": []
+        },
+        {
+            "date": "10/5/2024",
+            "title": "Hubie Halloween",
+            "service": [
+                {
+                    "name": "Netflix",
+                    "link": "https://www.netflix.com/watch/80245104"
+                }
+            ]
+        },
+        {
+            "date": "10/6/2024",
+            "title": "Jennifer's Body",
+            "service": [
+                {
+                    "name": "Hulu",
+                    "link": "https://www.hulu.com/movie/bd7cc0fd-af0d-4f99-baf7-2081d03a460b"
+                },
+                {
+                    "name": "PlutoTV",
+                    "link": "https://pluto.tv/us/on-demand/movies/66df7c96d404600013f3dd7f"
+                }
+            ]
+        },
+        {
+            "date": "10/7/2024",
+            "title": "It's The Great Pumpkin Charlie Brown",
+            "service": [
+                {
+                    "name": "Apple TV",
+                    "link": "https://tv.apple.com/us/movie/its-the-great-pumpkin-charlie-brown/umc.cmc.1c5nvp802hos5t3u0umlukkwh"
+                }
+            ]
+        },
+        {
+            "date": "10/8/2024",
+            "title": "Smile",
+            "service": [
+                {
+                    "name": "Paramount+",
+                    "link": "https://www.amazon.com/Smile-Sosie-Bacon/dp/B0CNKSC8YM"
+                }
+            ]
+        },
+        {
+            "date": "10/9/2024",
+            "title": "Blood Diner",
+            "service": [
+                {
+                    "name": "Tubi",
+                    "link": "https://tubitv.com/movies/555863/blood-diner"
+                },
+                {
+                    "name": "MovieSphere",
+                    "link": "https://www.amazon.com/Blood-Diner-Rick-Burks/dp/B01LWJF9TH"
+                }
+            ]
+        },
+        {
+            "date": "10/10/2024",
+            "title": "Lake Mungo",
+            "service": [
+                {
+                    "name": "Freevee",
+                    "link": "https://www.amazon.com/gp/video/detail/B008Y716ZY/ref=atv_dp_share_cu_r"
+                }
+            ]
+        },
+        {
+            "date": "10/11/2024",
+            "title": "V/H/S",
+            "justwatch_url": "https://www.justwatch.com/us/movie/vhs",
+            "service": [
+                {
+                    "name": "Prime Video",
+                    "link": "https://www.amazon.com/gp/video/detail/B00944CJRK/ref=atv_dp_share_cu_r"
+                }
+            ]
+        },
+        {
+            "date": "10/12/2024",
+            "title": "Haunt",
+            "service": [
+                {
+                    "name": "Prime Video",
+                    "link": "https://www.amazon.com/gp/video/detail/B0D3FRXFWT/ref=atv_dp_share_cu_r"
+                }
+            ]
+        },
+        {
+            "date": "10/13/2024",
+            "title": "Host",
+            "service": [
+                {
+                    "name": "Shudder",
+                    "link": "https://www.shudder.com/movies/watch/host/b89c77f392b1c5e8"
+                },
+                {
+                    "name": "AMC+",
+                    "link": "https://www.amazon.com/Host-Haley-Bishop/dp/B08DX5F3WT"
+                }
+            ]
+        },
+        {
+            "date": "10/14/2024",
+            "title": "Gonjiam: Haunted Asylum",
+            "service": [
+                {
+                    "name": "Prime Video",
+                    "link": "https://www.amazon.com/gp/video/detail/B0BVQ77NZ1/ref=atv_dp_share_cu_r"
+                }
+            ]
+        },
+        {
+            "date": "10/15/2024",
+            "title": "Evil Dead II",
+            "justwatch_url": "https://www.justwatch.com/us/movie/evil-dead-ii",
+            "service": [
+                {
+                    "name": "Shudder",
+                    "link": "https://www.shudder.com/movies/watch/evil-dead-2/ab3a201481252311"
+                }
+            ]
+        },
+        {
+            "date": "10/16/2024",
+            "title": "Night of the Demons",
+            "justwatch_url": "https://www.justwatch.com/us/movie/night-of-the-demons",
+            "service": [
+                {
+                    "name": "Prime Video",
+                    "link": "https://www.amazon.com/gp/video/detail/B00I8H7FW8/ref=atv_dp_share_cu_r"
+                }
+            ]
+        },
+        {
+            "date": "10/17/2024",
+            "title": "A Nightmare on Elm Street 3: Dream Warriors",
+            "justwatch_url": "https://www.justwatch.com/us/movie/a-nightmare-on-elm-street-3-dream-warriors",
+            "service": [
+                {
+                    "name": "Hulu",
+                    "link": "https://www.hulu.com/movie/0acc3d00-b4ea-468d-950d-f0ec9b91266f"
+                },
+                {
+                    "name": "Max",
+                    "link": "https://play.max.com/movie/06c3ca4d-a0bd-43fa-902a-d679be2d7f91"
+                }
+            ]
+        },
+        {
+            "date": "10/18/2024",
+            "title": "Re-Animator",
+            "service": [
+                {
+                    "name": "Prime Video",
+                    "link": "https://www.amazon.com/gp/video/detail/B0CGZY9TW4/ref=atv_dp_share_cu_r"
+                }
+            ]
+        },
+        {
+            "date": "10/19/2024",
+            "title": "Halloween 6: The Curse of Michael Myers",
+            "justwatch_url": "https://www.justwatch.com/us/movie/halloween-666-the-origin-of-michael-myers",
+            "service": [
+                {
+                    "name": "Paramount+",
+                    "link": "https://www.amazon.com/Halloween-Vi-Curse-Michael-Myers/dp/B009653B7E"
+                }
+            ]
+        },
+        {
+            "date": "10/20/2024",
+            "title": "The Ring",
+            "service": [
+                {
+                    "name": "AMC+",
+                    "link": "https://www.amazon.com/Ring-Naomi-Watts/dp/B00B1L8YJG"
+                }
+            ]
+        },
+        {
+            "date": "10/21/2024",
+            "title": "Frankenhooker",
+            "service": [
+                {
+                    "name": "Freevee",
+                    "link": "https://www.amazon.com/gp/video/detail/B0C4W37N2K/ref=atv_dp_share_cu_r"
+                }
+            ]
+        },
+        {
+            "date": "10/22/2024",
+            "title": "Ju-on: The Grudge",
+            "justwatch_url": "https://www.justwatch.com/us/movie/the-grudge",
+            "service": [
+                {
+                    "name": "Roku",
+                    "link": "https://therokuchannel.roku.com/details/07fda2e30676521882b783f1d1d5bf04/ju-on-the-grudge?source=bing"
+                },
+                {
+                    "name": "Plex",
+                    "link": "https://watch.plex.tv/movie/ju-on-the-grudge"
+                }
+            ]
+        },
+        {
+            "date": "10/23/2024",
+            "title": "Noroi: The Curse",
+            "justwatch_url": "https://www.justwatch.com/us/movie/noroi-the-curse",
+            "service": [
+                {
+                    "name": "Shudder",
+                    "link": "https://www.shudder.com/movies/watch/noroi-the-curse/6886ca2eae6160c5"
+                }
+            ]
+        },
+        {
+            "date": "10/24/2024",
+            "title": "Terrifier",
+            "service": [
+                {
+                    "name": "Prime Video",
+                    "link": "https://www.amazon.com/gp/video/detail/B079M353P1/ref=atv_dp_share_cu_r"
+                }
+            ]
+        },
+        {
+            "date": "10/25/2024",
+            "title": "An American Werewolf in London",
+            "justwatch_url": "https://www.justwatch.com/us/movie/an-american-werewolf-in-london",
+            "service": [
+                {
+                    "name": "Prime Video",
+                    "link": "https://www.amazon.com/gp/video/detail/B01JHHDW6A/ref=atv_dp_share_cu_r"
+                }
+            ]
+        },
+        {
+            "date": "10/26/2024",
+            "title": "Bride of Frankenstein",
+            "justwatch_url": "https://www.justwatch.com/us/movie/the-bride-of-frankenstein",
+            "service": [
+                {
+                    "name": "Criterion Channel",
+                    "link": "https://www.criterionchannel.com/bride-of-frankenstein"
+                },
+                {
+                    "name": "Peacock",
+                    "link": "https://www.peacocktv.com/watch/asset/movies/horror/bride-of-frankenstein/62a82f72-86be-3cee-9c87-c0aa2a6d1e53"
+                }
+            ]
+        },
+        {
+            "date": "10/27/2024",
+            "title": "House of Wax",
+            "service": [
+                {
+                    "name": "Internet Archive",
+                    "link": "https://archive.org/details/house-of-wax-1953"
+                }
+            ]
+        },
+        {
+            "date": "10/28/2024",
+            "title": "The Wicker Man",
+            "service": [
+                {
+                    "name": "Kanopy",
+                    "link": "https://www.kanopy.com/en/slcpl/video/14345320"
+                },
+                {
+                    "name": "Paramount+",
+                    "link": "https://www.amazon.com/Wicker-Man-Nicolas-Cage/dp/B07NKGKYLG"
+                }
+            ]
+        },
+        {
+            "date": "10/29/2024",
+            "title": "Suspiria",
+            "service": [
+                {
+                    "name": "Prime Video",
+                    "link": "https://www.amazon.com/gp/video/detail/B0B7C18QQZ/ref=atv_dp_share_cu_r"
+                }
+            ]
+        },
+        {
+            "date": "10/30/2024",
+            "title": "Freaks",
+            "service": [
+                {
+                    "name": "Netflix",
+                    "link": "https://www.netflix.com/watch/81031738"
+                }
+            ]
+        },
+        {
+            "date": "10/31/2024",
+            "title": "Terrifier 2",
+            "service": [
+                {
+                    "name": "Prime Video",
+                    "link": "https://www.amazon.com/gp/video/detail/B0CGQMF39F/ref=atv_dp_share_cu_r"
+                }
+            ]
+        },
+        {
+            "date": "",
+            "title": "Terrifier 3",
+            "service": [
+                {
+                    "name": "Fandango",
+                    "link": "https://www.fandango.com/terrifier-3-2024-237168/movie-overview"
+                }
+            ]
+        }
+    ],
+    "textContent": {
+        "heading": "31 for 31",
+        "subheading": "Movies to Watch This October",
+        "headingPrefix": "Last Podcast on the Left presents: ",
+        "description": "Here's where to stream (almost) all of the 31 for 31 Halloween Movies selected by Ed and Henry from",
+        "podcastLinkText": "Last Podcast on the Left: Side Stories",
+        "podcastLinkUrl": "https://open.spotify.com/episode/1P11eNk7cJzwRtJOk7KCaV?si=881b4ced12e24d92",
+        "footer": {
+            "creditText": "Made with love by",
+            "creditHandle": "@elkirkmo",
+            "creditSuffix": ". Hail yourself.",
+            "disclaimer": "This website is not owned, operated, or even acknowledged by LPN or any of its affiliates. Links are valid only in the US region of various streaming sites. This website does not aim to make money through affiliate links or sign-up referrals or any such shenanigans and is only for informational purposes. If you like what I did here and wanna help out or buy me a beer, hit me up through",
+            "disclaimerLinkText": "github",
+            "githubUrl": "https://github.com/elkirkmo/31for31"
+        }
+    }
+}
