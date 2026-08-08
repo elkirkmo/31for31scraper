@@ -11,10 +11,10 @@ info:
     name: MIT
     url: https://opensource.org/licenses/MIT
 servers:
+  - url: https://31for31scraper.vercel.app
+    description: Production (Vercel)
   - url: http://127.0.0.1:5000
     description: Local development
-  - url: https://REPLACE-WITH-PRODUCTION-URL
-    description: Production (Vercel) -- update once a custom/production domain is set
 
 tags:
   - name: Health
