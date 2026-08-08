@@ -1,6 +1,7 @@
 import json
 import os
 
+import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 
@@ -34,6 +35,8 @@ def scrape():
             return jsonify(scrape_title(title_param, url=request.args.get("url")))
         except ScrapeError as exc:
             return jsonify({"title": title_param, "service": [], "error": str(exc)}), 404
+        except requests.RequestException as exc:
+            return jsonify({"title": title_param, "service": [], "error": str(exc)}), 502
 
     with open(DATA_FILE) as f:
         data = json.load(f)

@@ -1,0 +1,12 @@
+<!doctype html>
+<!--
+  Simulates JustWatch changing their page structure so that
+  window.__APOLLO_STATE__ is no longer present. Used to test that
+  _extract_json_var raises ScrapeError instead of crashing.
+-->
+<html>
+  <head><title>fixture: no apollo state</title></head>
+  <body>
+    <script>window.__SOMETHING_ELSE__ = {"unrelated": true};</script>
+  </body>
+</html>

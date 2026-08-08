@@ -1,0 +1,13 @@
+<!doctype html>
+<!--
+  Page loads fine (200) and has a real __APOLLO_STATE__, but no Url
+  entity's fullPath matches where we landed -- e.g. we were served a
+  genre/listing page instead of a title page. Used to test the
+  "Could not locate title data" ScrapeError branch.
+-->
+<html>
+  <head><title>fixture: no matching url entity</title></head>
+  <body>
+    <script data-vue-ssr-data>window.__APOLLO_STATE__={"defaultClient": {"Url:unrelated": {"fullPath": "/us/genre/horror", "node": {"type": "id", "generated": false, "id": "Genre:1", "typename": "Genre"}}}}</script>
+  </body>
+</html>
