@@ -141,6 +141,7 @@ the scraper). Each year is a list of film entries:
 
 ```json
 {
+  "id": 202526,
   "date": "10/26/2025",
   "title": "Event Horizon",
   "justwatch_url": "https://www.justwatch.com/us/movie/event-horizon-1997",
@@ -163,6 +164,14 @@ the scraper). Each year is a list of film entries:
 }
 ```
 
+- **`id`** — stable unique identifier: `year * 100 + day-of-month` (e.g. day
+  26 of 2025 → `202526`). If a year ever has more than 31 films, the
+  overflow entries get a random two-digit value greater than 31 instead of
+  a real day, so it stays unique but isn't a valid calendar day (see
+  `Terrifier 3` in the 2024 list, which has no `date`, for an example).
+  Exists so each film has a stable key independent of title text — useful
+  for anything keyed off a real identifier later (e.g. upserting into a
+  database, since `title` alone has had typos/duplicates in the past).
 - **`justwatch_url`** (optional) — set this when the guessed slug is wrong.
   Takes priority over slug-guessing whenever present. Not required for most
   films.

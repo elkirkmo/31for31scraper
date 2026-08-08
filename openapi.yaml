@@ -105,7 +105,8 @@ paths:
                   summary: Full data.json scrape (no title param)
                   value:
                     "2025":
-                      - date: "10/26/2025"
+                      - id: 202526
+                        date: "10/26/2025"
                         title: "Event Horizon"
                         justwatch_url: "https://www.justwatch.com/us/movie/event-horizon-1997"
                         service:
@@ -234,13 +235,22 @@ components:
       type: object
       description: >
         One film's entry within a `BatchScrapeResponse` year. Preserves
-        whatever fields the film had in `data.json` (typically `date`,
+        whatever fields the film had in `data.json` (typically `id`, `date`,
         `title`, and optionally `justwatch_url`); `service` is always
         replaced with current offers, and `error` is added only if this
         film's scrape failed.
       additionalProperties: true
-      required: [title, service]
+      required: [id, title, service]
       properties:
+        id:
+          type: integer
+          description: >
+            Stable unique identifier: `year * 100 + day-of-month` (e.g. `1`
+            -> `202501`, `26` -> `202526`). For a year with more than 31
+            films, the overflow entries get a randomly assigned two-digit
+            value greater than 31 instead of a real day-of-month, so it
+            stays unique but isn't a valid calendar day.
+          example: 202526
         date:
           type: string
           example: "10/26/2025"
