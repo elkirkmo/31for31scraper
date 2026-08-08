@@ -181,14 +181,16 @@ the scraper). Each year is a list of film entries:
       "type": "free",
       "price": null,
       "currency": "USD",
-      "link": "https://www.kanopy.com/..."
+      "link": "https://www.kanopy.com/...",
+      "icon": "https://images.justwatch.com/icon/.../s100/kanopy.webp"
     },
     {
       "name": "Amazon Video",
       "type": "rent",
       "price": 3.99,
       "currency": "USD",
-      "link": "https://watch.amazon.com/..."
+      "link": "https://watch.amazon.com/...",
+      "icon": "https://images.justwatch.com/icon/.../s100/amazonvideo.webp"
     }
   ]
 }
@@ -211,6 +213,12 @@ the scraper). Each year is a list of film entries:
   included with a service like Netflix or a channel add-on; there's no
   price for those.
 - **`price`** — `null` for free/subscription offers.
+- **`service[].icon`** — the service's icon, hosted on JustWatch's own
+  image CDN (`images.justwatch.com`) rather than scraped from each
+  individual streaming site — JustWatch already curates one per package,
+  and we get it for free from the same page we're already scraping. Fixed
+  at a 100px-wide profile and webp format (`ICON_PROFILE`/`ICON_FORMAT` in
+  `scraper.py`); `null` if JustWatch had no icon path for that package.
 
 ## Deployment (Vercel)
 
