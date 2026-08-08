@@ -76,10 +76,11 @@ into the Vercel deployment.
 
 ## API
 
-Full endpoint/schema reference: [`openapi.yaml`](openapi.yaml) (OpenAPI 3.0).
-Paste it into [editor.swagger.io](https://editor.swagger.io) for an
-interactive view, or point any OpenAPI-aware tool (Postman, Redoc, etc.) at
-the file directly.
+Full endpoint/schema reference: visit `/` (e.g.
+https://31for31scraper.vercel.app/) for an interactive Swagger UI, served
+straight from [`openapi.yaml`](openapi.yaml) (OpenAPI 3.0) — no auth
+required. The raw spec is also served as-is at `/openapi.yaml` if you'd
+rather point another tool (Postman, Redoc, etc.) at it directly.
 
 ### `GET /api/health`
 

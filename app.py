@@ -3,15 +3,26 @@ import os
 
 import requests
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, render_template, request, send_file
 
 from scraper import ScrapeError, scrape_title, scrape_titles
 
 load_dotenv()
 
 DATA_FILE = os.path.join(os.path.dirname(__file__), "data.json")
+OPENAPI_FILE = os.path.join(os.path.dirname(__file__), "openapi.yaml")
 
 app = Flask(__name__)
+
+
+@app.route("/", methods=["GET"])
+def index():
+    return render_template("index.html")
+
+
+@app.route("/openapi.yaml", methods=["GET"])
+def openapi_spec():
+    return send_file(OPENAPI_FILE, mimetype="application/yaml")
 
 
 def _check_auth():
