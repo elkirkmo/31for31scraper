@@ -250,6 +250,23 @@ class TestPutYear:
         assert resp.status_code == 400
         assert "title" in resp.get_json()["error"]
 
+    def test_array_item_that_is_not_an_object_returns_400(self, client, auth_headers, data_file):
+        path = data_file({})
+        resp = client.put(
+            "/api/years/2026",
+            json=["not an object", {"title": "Valid Film", "date": "10/1/2026"}],
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "must be a JSON object" in resp.get_json()["error"]
+        # Nothing written -- the whole request is validated before any write.
+        assert json.loads(path.read_text()) == {}
+
+    def test_title_with_wrong_type_returns_400(self, client, auth_headers, data_file):
+        data_file({})
+        resp = client.put("/api/years/2026", json=[{"title": 123}], headers=auth_headers)
+        assert resp.status_code == 400
+
     def test_invalid_date_format_returns_400(self, client, auth_headers, data_file):
         data_file({})
         resp = client.put(
