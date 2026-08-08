@@ -15,6 +15,24 @@ class TestHealth:
         assert resp.get_json() == {"status": "ok"}
 
 
+class TestSwaggerUI:
+    def test_index_serves_swagger_ui_without_auth(self, client):
+        resp = client.get("/")
+        assert resp.status_code == 200
+        assert resp.content_type.startswith("text/html")
+        assert b"swagger-ui" in resp.data
+
+    def test_index_points_swagger_ui_at_the_spec_route(self, client):
+        resp = client.get("/")
+        assert b'"/openapi.yaml"' in resp.data
+
+    def test_openapi_yaml_served_without_auth(self, client):
+        resp = client.get("/openapi.yaml")
+        assert resp.status_code == 200
+        assert resp.content_type == "application/yaml"
+        assert resp.data.startswith(b"openapi: 3.0.3")
+
+
 class TestAuth:
     def test_missing_api_key_header_returns_401(self, client, api_key):
         resp = client.get("/api/scrape")
