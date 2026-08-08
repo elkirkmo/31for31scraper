@@ -14,6 +14,9 @@ from urllib.parse import urlparse
 import requests
 
 JUSTWATCH_BASE_URL = "https://www.justwatch.com/us/movie/"
+JUSTWATCH_ICON_BASE_URL = "https://images.justwatch.com"
+ICON_PROFILE = "s100"
+ICON_FORMAT = "webp"
 REQUEST_TIMEOUT = 12
 MAX_CONCURRENT_REQUESTS = 8
 USER_AGENT = (
@@ -79,6 +82,34 @@ def _resolve_ref(cache, ref):
     if isinstance(ref, dict) and ref.get("type") == "id":
         return cache.get(ref["id"], {})
     return ref or {}
+
+
+def _package_icon_url(package):
+    """Build a full icon URL from a Package entity's icon path.
+
+    JustWatch exposes this two different ways depending on the package,
+    and most packages only have the first: a size-parameterized field
+    with the profile already baked into the value, e.g.
+    icon({"profile":"S100"}) -> "/icon/241588643/s100/kanopy.{format}"
+    (only {format} left to fill in). A few packages additionally have a
+    plain "icon" field instead, with both {profile} and {format} open,
+    e.g. "/icon/76972041/{profile}/rokuchannel.{format}". Same fixed
+    size/format either way, at least for now.
+    """
+    icon_path = (
+        package.get('icon({"profile":"S100"})')
+        or package.get("icon")
+        or next(
+            (v for k, v in package.items() if k.startswith("icon(") and isinstance(v, str)),
+            None,
+        )
+    )
+    if not icon_path:
+        return None
+    try:
+        return JUSTWATCH_ICON_BASE_URL + icon_path.format(profile=ICON_PROFILE, format=ICON_FORMAT)
+    except (KeyError, IndexError):
+        return None
 
 
 def _find_offer_refs(movie):
@@ -156,6 +187,7 @@ def scrape_title(title, session=None, url=None):
             "price": offer.get("retailPriceValue"),
             "currency": offer.get("currency"),
             "link": offer.get("standardWebURL") or offer.get("preAffiliatedStandardWebURL"),
+            "icon": _package_icon_url(package),
         })
 
     # Report the canonical URL we actually landed on, not the guessed one --

@@ -7,6 +7,7 @@ from scraper import (
     ScrapeError,
     _extract_json_var,
     _find_offer_refs,
+    _package_icon_url,
     _resolve_ref,
     build_url,
     scrape_title,
@@ -81,6 +82,45 @@ class TestResolveRef:
         assert _resolve_ref({}, None) == {}
 
 
+class TestPackageIconUrl:
+    def test_prefers_the_s100_parameterized_field(self):
+        # This is the field most packages actually have (profile already
+        # baked into the value, only {format} left) -- e.g. Kanopy,
+        # FlixHouse, Amazon Video on a real page only ever have this one,
+        # not the plain "icon" field below.
+        package = {'icon({"profile":"S100"})': "/icon/241588643/s100/kanopy.{format}"}
+        assert _package_icon_url(package) == "https://images.justwatch.com/icon/241588643/s100/kanopy.webp"
+
+    def test_falls_back_to_plain_templated_icon_field(self):
+        package = {"icon": "/icon/76972041/{profile}/rokuchannel.{format}"}
+        assert _package_icon_url(package) == "https://images.justwatch.com/icon/76972041/s100/rokuchannel.webp"
+
+    def test_s100_field_takes_priority_over_plain_icon_field(self):
+        # Real packages that have both (e.g. Philo) point at the same
+        # underlying image either way, but the S100 field should still
+        # win if they ever disagreed.
+        package = {
+            'icon({"profile":"S100"})': "/icon/111/s100/a.{format}",
+            "icon": "/icon/222/{profile}/b.{format}",
+        }
+        assert _package_icon_url(package) == "https://images.justwatch.com/icon/111/s100/a.webp"
+
+    def test_falls_back_to_any_other_icon_parameterized_field(self):
+        # Defensive last resort, in case a package only ever exposes some
+        # other profile size.
+        package = {'icon({"profile":"S780"})': "/icon/333/s780/c.{format}"}
+        assert _package_icon_url(package) == "https://images.justwatch.com/icon/333/s780/c.webp"
+
+    def test_missing_icon_field_returns_none(self):
+        assert _package_icon_url({}) is None
+
+    def test_icon_field_none_returns_none(self):
+        assert _package_icon_url({"icon": None}) is None
+
+    def test_malformed_template_returns_none_instead_of_raising(self):
+        assert _package_icon_url({"icon": "/icon/{unexpected_placeholder}"}) is None
+
+
 class TestFindOfferRefs:
     def test_prefers_the_largest_real_streaming_list_over_curated_and_physical(self):
         # Mirrors what a real title page actually carries: a curated "jwt"
@@ -135,6 +175,7 @@ class TestScrapeTitle:
             "price": None,
             "currency": "USD",
             "link": "https://therokuchannel.roku.com/details/369cb0c11bbb5a41829a580de8af302d/the-thing?source=bing",
+            "icon": "https://images.justwatch.com/icon/76972041/s100/rokuchannel.webp",
         }
 
         amazon_rent = next(s for s in result["service"] if s["name"] == "Amazon Video" and s["type"] == "rent")

@@ -123,11 +123,13 @@ paths:
                             price: null
                             currency: "USD"
                             link: "https://www.kanopy.com/en/title/..."
+                            icon: "https://images.justwatch.com/icon/.../s100/kanopy.webp"
                           - name: "Amazon Video"
                             type: "rent"
                             price: 3.99
                             currency: "USD"
                             link: "https://watch.amazon.com/detail?..."
+                            icon: "https://images.justwatch.com/icon/.../s100/amazonvideo.webp"
                     textContent:
                       heading: "31 for 31"
                 single:
@@ -141,6 +143,7 @@ paths:
                         price: null
                         currency: "USD"
                         link: "https://therokuchannel.roku.com/details/..."
+                        icon: "https://images.justwatch.com/icon/76972041/s100/rokuchannel.webp"
         "401":
           description: Missing or incorrect `X-API-Key` header.
           content:
@@ -367,6 +370,15 @@ components:
           type: string
           format: uri
           nullable: true
+        icon:
+          type: string
+          format: uri
+          nullable: true
+          description: >
+            The service's icon, hosted on JustWatch's own image CDN, fixed
+            at a 100px-wide profile and webp format. Null if JustWatch had
+            no icon path for this package.
+          example: "https://images.justwatch.com/icon/76972041/s100/rokuchannel.webp"
 
     FilmInput:
       type: object
