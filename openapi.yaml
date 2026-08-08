@@ -1,0 +1,309 @@
+openapi: 3.0.3
+info:
+  title: 31for31 JustWatch Scraper API
+  description: >
+    Scrapes JustWatch for current streaming offers (free / subscription /
+    rent / buy) for the films tracked in `data.json`, so the 31for31 site's
+    streaming links can be refreshed without hand-checking every title.
+    See the [README](README.md) for how the scraping itself works.
+  version: "1.0.0"
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+servers:
+  - url: http://127.0.0.1:5000
+    description: Local development
+  - url: https://REPLACE-WITH-PRODUCTION-URL
+    description: Production (Vercel) -- update once a custom/production domain is set
+
+tags:
+  - name: Health
+    description: Liveness check
+  - name: Scrape
+    description: JustWatch scraping
+
+paths:
+  /api/health:
+    get:
+      operationId: getHealth
+      tags: [Health]
+      summary: Health check
+      description: >
+        Returns 200 if the API process is up and responding to requests.
+        Does not check JustWatch reachability, `data.json` readability, or
+        anything beyond "the server is running" -- a shallow liveness probe,
+        not a readiness check. Does not require authentication.
+      security: []
+      responses:
+        "200":
+          description: The API is up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: ok
+
+  /api/scrape:
+    get:
+      operationId: scrape
+      tags: [Scrape]
+      summary: Scrape current JustWatch streaming offers
+      description: >
+        **Without `title`**: scrapes every film across every year in
+        `data.json` and returns the same structure back, with each film's
+        `service` array replaced by its current offers. This endpoint never
+        writes to `data.json` -- review the response and copy in what you
+        want. A single film failing to scrape does not fail the request;
+        that film's entry comes back with an empty `service` array and an
+        `error` field instead (see the `BatchScrapeResponse` schema).
+
+
+        **With `title`**: scrapes a single film ad hoc, without touching
+        `data.json`. Useful for testing a title, or a `justwatch_url`
+        override, before adding/changing it in `data.json`. The response
+        shape changes to a single `FilmResult` object instead of the
+        year-keyed batch structure.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: title
+          in: query
+          required: false
+          description: >
+            Scrape a single film by title instead of every film in
+            `data.json`. When present, the response is a `FilmResult`
+            instead of a `BatchScrapeResponse`.
+          schema:
+            type: string
+          example: "The Strangers (2008)"
+        - name: url
+          in: query
+          required: false
+          description: >
+            Only meaningful together with `title`. Scrapes this exact
+            JustWatch URL directly instead of guessing the slug from the
+            title -- this is how you'd try out a `justwatch_url` override
+            before writing it to `data.json`.
+          schema:
+            type: string
+            format: uri
+          example: "https://www.justwatch.com/us/movie/event-horizon-1997"
+      responses:
+        "200":
+          description: >
+            Scrape succeeded. Returns a `BatchScrapeResponse` when `title`
+            was omitted, or a `FilmResult` when `title` was provided.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/BatchScrapeResponse"
+                  - $ref: "#/components/schemas/FilmResult"
+              examples:
+                batch:
+                  summary: Full data.json scrape (no title param)
+                  value:
+                    "2025":
+                      - date: "10/26/2025"
+                        title: "Event Horizon"
+                        justwatch_url: "https://www.justwatch.com/us/movie/event-horizon-1997"
+                        service:
+                          - name: "Kanopy"
+                            type: "free"
+                            price: null
+                            currency: "USD"
+                            link: "https://www.kanopy.com/en/title/..."
+                          - name: "Amazon Video"
+                            type: "rent"
+                            price: 3.99
+                            currency: "USD"
+                            link: "https://watch.amazon.com/detail?..."
+                    textContent:
+                      heading: "31 for 31"
+                single:
+                  summary: "Single-title scrape (?title=...)"
+                  value:
+                    title: "The Thing From Another World"
+                    url: "https://www.justwatch.com/us/movie/the-thing-from-another-world"
+                    service:
+                      - name: "The Roku Channel"
+                        type: "free"
+                        price: null
+                        currency: "USD"
+                        link: "https://therokuchannel.roku.com/details/..."
+        "401":
+          description: Missing or incorrect `X-API-Key` header.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "Unauthorized"
+        "404":
+          description: >
+            `title` was provided but no JustWatch page could be found or
+            parsed for it (e.g. the guessed slug 404s, or the title is
+            misspelled). Only possible in single-title mode -- a batch
+            scrape reports per-film failures inline in its 200 response
+            instead.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FilmResult"
+              example:
+                title: "Not A Real Movie"
+                service: []
+                error: "No JustWatch page found at https://www.justwatch.com/us/movie/not-a-real-movie"
+        "500":
+          description: >
+            The server has no `ADMIN_API_KEY` configured, so no key could
+            possibly be valid. A deployment/configuration problem, not a
+            caller error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "ADMIN_API_KEY is not configured on the server"
+        "502":
+          description: >
+            `title` was provided and the request to JustWatch itself failed
+            (timeout, connection error, DNS failure, non-404 HTTP error,
+            etc.) -- distinct from 404, which means JustWatch responded but
+            the title genuinely wasn't found. Only possible in single-title
+            mode -- a batch scrape reports per-film network failures inline
+            in its 200 response instead.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FilmResult"
+              example:
+                title: "Blood Feast"
+                service: []
+                error: "HTTPSConnectionPool(host='www.justwatch.com', port=443): Read timed out."
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Must match the server's `ADMIN_API_KEY` environment variable.
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: ok
+
+    Offer:
+      type: object
+      description: One streaming option for a film, as currently listed on JustWatch.
+      properties:
+        name:
+          type: string
+          description: Display name of the streaming service.
+          example: "Amazon Video"
+        type:
+          type: string
+          description: >
+            Bucketed from JustWatch's monetization type. `subscription`
+            covers titles included with a service like Netflix or a channel
+            add-on (no separate price).
+          enum: [free, subscription, rent, buy, cinema, unknown]
+          example: rent
+        price:
+          type: number
+          nullable: true
+          description: Null for free/subscription offers.
+          example: 3.99
+        currency:
+          type: string
+          nullable: true
+          example: USD
+        link:
+          type: string
+          format: uri
+          nullable: true
+
+    FilmEntry:
+      type: object
+      description: >
+        One film's entry within a `BatchScrapeResponse` year. Preserves
+        whatever fields the film had in `data.json` (typically `date`,
+        `title`, and optionally `justwatch_url`); `service` is always
+        replaced with current offers, and `error` is added only if this
+        film's scrape failed.
+      additionalProperties: true
+      required: [title, service]
+      properties:
+        date:
+          type: string
+          example: "10/26/2025"
+        title:
+          type: string
+          example: "Event Horizon"
+        justwatch_url:
+          type: string
+          format: uri
+          nullable: true
+          description: >
+            Optional override set in `data.json` for titles whose JustWatch
+            slug can't be guessed from the title text. Takes priority over
+            slug-guessing whenever present.
+        service:
+          type: array
+          items:
+            $ref: "#/components/schemas/Offer"
+        error:
+          type: string
+          nullable: true
+          description: Present only if this film's scrape failed; `service` will be empty.
+
+    BatchScrapeResponse:
+      type: object
+      description: >
+        Keyed by year (e.g. `"2024"`, `"2025"`), each holding a list of
+        `FilmEntry` objects. Non-film keys present in `data.json` (e.g.
+        `textContent`, the site's copy) pass through completely unchanged.
+      additionalProperties:
+        oneOf:
+          - type: array
+            items:
+              $ref: "#/components/schemas/FilmEntry"
+          - description: Passthrough value for a non-film key (e.g. `textContent`).
+
+    FilmResult:
+      type: object
+      description: >
+        Result of scraping a single film (the `?title=` response shape).
+        `url` is only present when the scrape succeeded (200) -- it's
+        omitted from 404/502 error bodies, which only have `title`,
+        `service`, and `error`.
+      required: [title, service]
+      properties:
+        title:
+          type: string
+        url:
+          type: string
+          format: uri
+          description: The canonical JustWatch URL that was actually scraped. Only present on success.
+        service:
+          type: array
+          items:
+            $ref: "#/components/schemas/Offer"
+        error:
+          type: string
+          nullable: true
+          description: Present only on failure; `service` will be empty.
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string

@@ -6,6 +6,15 @@ from helpers import load_fixture
 JUSTWATCH_BASE = "https://www.justwatch.com/us/movie/"
 
 
+class TestHealth:
+    def test_returns_200_without_auth(self, client):
+        # Deliberately no api_key/auth_headers fixture -- health checks
+        # need to work for monitoring tools that don't have the admin key.
+        resp = client.get("/api/health")
+        assert resp.status_code == 200
+        assert resp.get_json() == {"status": "ok"}
+
+
 class TestAuth:
     def test_missing_api_key_header_returns_401(self, client, api_key):
         resp = client.get("/api/scrape")

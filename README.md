@@ -76,6 +76,17 @@ into the Vercel deployment.
 
 ## API
 
+Full endpoint/schema reference: [`openapi.yaml`](openapi.yaml) (OpenAPI 3.0).
+Paste it into [editor.swagger.io](https://editor.swagger.io) for an
+interactive view, or point any OpenAPI-aware tool (Postman, Redoc, etc.) at
+the file directly.
+
+### `GET /api/health`
+
+No auth required. Always returns `200 {"status": "ok"}` if the process is
+up — a liveness check for uptime monitoring, not a check that JustWatch or
+`data.json` are reachable.
+
 ### `GET /api/scrape`
 
 Requires an `X-API-Key` header matching `ADMIN_API_KEY`. Requests without a

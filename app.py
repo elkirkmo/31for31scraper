@@ -23,6 +23,11 @@ def _check_auth():
     return None
 
 
+@app.route("/api/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok"})
+
+
 @app.route("/api/scrape", methods=["GET"])
 def scrape():
     auth_error = _check_auth()
