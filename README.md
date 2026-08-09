@@ -233,6 +233,44 @@ Variables (Settings → Environment Variables). `.env` is gitignored and
 never gets deployed, so this is the only place the production secret
 lives.
 
+## Security
+
+Last audited 2026-08-08 against SQL injection, brute force, SSRF, path
+traversal, command injection, CSRF, XSS, mass assignment, unsafe
+deserialization, ReDoS, and dependency pinning.
+
+- **All state-changing endpoints require `ADMIN_API_KEY`** via the
+  `X-API-Key` header, compared with `hmac.compare_digest` (constant-time —
+  plain `!=` leaks timing information proportional to how many leading
+  characters match).
+- **`/api/scrape`'s `url` param and `justwatch_url` in `data.json` are
+  restricted to `https://www.justwatch.com/...`** (`is_justwatch_url()` in
+  `scraper.py`, enforced both at scrape time and at write time via
+  `PUT`/`POST /api/years`). Without this, either one would let an
+  authenticated caller make the server fetch arbitrary URLs on its
+  behalf — an open SSRF proxy if the API key ever leaked, e.g. to probe
+  Vercel's internal network or cloud metadata endpoints.
+- **No SQL database yet** (`data.json` only), so SQL injection doesn't
+  apply today. Once Supabase lands: use `supabase-py`'s query builder or
+  parameterized queries, never hand-built SQL strings.
+- **`year` in `/api/years/<year>` is regex-validated** to exactly 4 digits
+  before being used (as a dict key, not a filesystem path) — no path
+  traversal surface.
+- **`PUT`/`POST /api/years` whitelist exactly `title`/`date`/`justwatch_url`**
+  from the request body; any other field (including attempts to set `id`,
+  `service`, or `error` directly) is silently ignored — no mass-assignment
+  surface.
+- **`requirements.txt`/`requirements-dev.txt` are pinned to exact
+  versions**, not left open-ended, so deploys are reproducible and don't
+  silently pick up a new (possibly broken or vulnerable) release.
+- **Known accepted gaps, not fixed:** error bodies on `500`/`502` include
+  raw exception text (no secrets in them, and only reachable by an
+  authenticated caller already); there's no rate limiting on repeated
+  failed-auth attempts (the 256-bit key makes brute force computationally
+  infeasible regardless, and a real fix needs shared state like
+  Redis/Vercel Edge Config — a naive in-process limiter wouldn't actually
+  work across Vercel's stateless serverless instances).
+
 ## Notes for whoever touches this next
 
 - The scraper reads `robots.txt` on justwatch.com as of writing and it

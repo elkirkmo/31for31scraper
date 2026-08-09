@@ -10,6 +10,7 @@ from scraper import (
     _package_icon_url,
     _resolve_ref,
     build_url,
+    is_justwatch_url,
     scrape_title,
     scrape_titles,
     slugify,
@@ -50,6 +51,34 @@ class TestSlugify:
 
 def test_build_url_prefixes_base_and_slug():
     assert build_url("Blood Feast") == JUSTWATCH_BASE + "blood-feast"
+
+
+class TestIsJustwatchUrl:
+    def test_accepts_real_justwatch_movie_url(self):
+        assert is_justwatch_url("https://www.justwatch.com/us/movie/blood-feast") is True
+
+    def test_rejects_http_even_on_the_right_host(self):
+        assert is_justwatch_url("http://www.justwatch.com/us/movie/blood-feast") is False
+
+    def test_rejects_a_different_host_entirely(self):
+        # This is the SSRF case: an admin-supplied url= override or
+        # justwatch_url pointing anywhere else, e.g. an internal service
+        # or cloud metadata endpoint.
+        assert is_justwatch_url("https://example.com") is False
+        assert is_justwatch_url("https://169.254.169.254/latest/meta-data/") is False
+
+    def test_rejects_lookalike_host(self):
+        # A host that merely contains "justwatch.com" isn't the same as
+        # being justwatch.com itself.
+        assert is_justwatch_url("https://justwatch.com.evil.example/") is False
+        assert is_justwatch_url("https://notjustwatch.com/") is False
+
+    def test_rejects_non_string_input(self):
+        assert is_justwatch_url(None) is False
+        assert is_justwatch_url(12345) is False
+
+    def test_rejects_malformed_url(self):
+        assert is_justwatch_url("not a url at all") is False
 
 
 class TestExtractJsonVar:
@@ -153,6 +182,14 @@ class TestFindOfferRefs:
 
 
 class TestScrapeTitle:
+    def test_rejects_url_override_pointing_off_justwatch(self):
+        # SSRF guard: this must be rejected before any network request is
+        # made at all -- no responses.activate here on purpose, so the
+        # test would fail with a real connection attempt if the check
+        # didn't run first.
+        with pytest.raises(ScrapeError, match="Refusing to scrape non-JustWatch URL"):
+            scrape_title("Anything", url="https://example.com")
+
     @responses.activate
     def test_success_returns_all_offer_types_with_correct_values(self):
         url = JUSTWATCH_BASE + "the-thing-from-another-world"

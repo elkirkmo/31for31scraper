@@ -1,3 +1,4 @@
+import hmac
 import json
 import os
 import random
@@ -7,7 +8,7 @@ import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request, send_file
 
-from scraper import ScrapeError, scrape_title, scrape_titles
+from scraper import ScrapeError, is_justwatch_url, scrape_title, scrape_titles
 
 load_dotenv()
 
@@ -81,6 +82,8 @@ def _validate_and_build_entry(film, year, used_days):
     entry = {"id": film_id, "date": date, "title": title}
     justwatch_url = film.get("justwatch_url")
     if justwatch_url:
+        if not is_justwatch_url(justwatch_url):
+            return None, 'invalid "justwatch_url" for {!r}: must be an https URL on justwatch.com'.format(title)
         entry["justwatch_url"] = justwatch_url
     entry["service"] = []
     return entry, None
@@ -100,7 +103,7 @@ def _check_auth():
     api_key = os.environ.get("ADMIN_API_KEY")
     if not api_key:
         return jsonify({"error": "ADMIN_API_KEY is not configured on the server"}), 500
-    if request.headers.get("X-API-Key") != api_key:
+    if not hmac.compare_digest(request.headers.get("X-API-Key", ""), api_key):
         return jsonify({"error": "Unauthorized"}), 401
     return None
 
