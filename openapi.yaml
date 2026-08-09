@@ -92,7 +92,9 @@ paths:
             Only meaningful together with `title`. Scrapes this exact
             JustWatch URL directly instead of guessing the slug from the
             title -- this is how you'd try out a `justwatch_url` override
-            before writing it to `data.json`.
+            before writing it to `data.json`. Must be an `https://www.justwatch.com/...`
+            URL -- anything else is rejected (this endpoint won't fetch
+            arbitrary URLs on your behalf).
           schema:
             type: string
             format: uri
@@ -250,7 +252,8 @@ paths:
             Malformed request: body isn't a JSON array, a film is missing
             `title`, `date` doesn't match `M/D/YYYY`, `date`'s year
             doesn't match the `{year}` path parameter, the day is out of
-            1-31, or two films in the list share the same `date`.
+            1-31, two films in the list share the same `date`, or
+            `justwatch_url` isn't an `https://www.justwatch.com/...` URL.
           content:
             application/json:
               schema:
@@ -302,8 +305,9 @@ paths:
         "400":
           description: >
             Malformed request: body isn't a JSON object, missing `title`,
-            invalid `date`, or `date` collides with a film already in
-            `year`.
+            invalid `date`, `date` collides with a film already in `year`,
+            or `justwatch_url` isn't an `https://www.justwatch.com/...`
+            URL.
           content:
             application/json:
               schema:
@@ -403,7 +407,10 @@ components:
         justwatch_url:
           type: string
           format: uri
-          description: Optional. Same override as in data.json -- see FilmEntry.
+          description: >
+            Optional. Same override as in data.json -- see FilmEntry. Must
+            be an `https://www.justwatch.com/...` URL; rejected with 400
+            otherwise.
 
     FilmEntry:
       type: object

@@ -112,6 +112,18 @@ class TestSingleTitle:
         assert resp.status_code == 200
         assert resp.get_json()["url"] == url
 
+    def test_url_param_pointing_off_justwatch_is_rejected(self, client, auth_headers):
+        # SSRF guard: no responses.activate here on purpose -- if this
+        # weren't rejected before the request went out, the test would
+        # either hang/fail on a real connection attempt to example.com.
+        resp = client.get(
+            "/api/scrape",
+            query_string={"title": "Anything", "url": "https://example.com"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 404
+        assert "Refusing to scrape non-JustWatch URL" in resp.get_json()["error"]
+
     @responses.activate
     def test_upstream_network_error_returns_502(self, client, auth_headers):
         url = JUSTWATCH_BASE + "blood-feast"
@@ -275,6 +287,34 @@ class TestPutYear:
             headers=auth_headers,
         )
         assert resp.status_code == 400
+
+    def test_justwatch_url_pointing_off_justwatch_returns_400(self, client, auth_headers, data_file):
+        # SSRF guard, enforced at write time too so a bad justwatch_url
+        # is caught immediately rather than only failing later when
+        # /api/scrape happens to run.
+        path = data_file({})
+        resp = client.put(
+            "/api/years/2026",
+            json=[{"title": "X", "date": "10/1/2026", "justwatch_url": "https://example.com"}],
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "justwatch_url" in resp.get_json()["error"]
+        assert json.loads(path.read_text()) == {}
+
+    def test_justwatch_url_on_the_right_host_is_accepted(self, client, auth_headers, data_file):
+        data_file({})
+        resp = client.put(
+            "/api/years/2026",
+            json=[{
+                "title": "X",
+                "date": "10/1/2026",
+                "justwatch_url": "https://www.justwatch.com/us/movie/x",
+            }],
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()[0]["justwatch_url"] == "https://www.justwatch.com/us/movie/x"
 
     def test_date_year_mismatch_returns_400(self, client, auth_headers, data_file):
         data_file({})

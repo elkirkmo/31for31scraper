@@ -14,6 +14,8 @@ from urllib.parse import urlparse
 import requests
 
 JUSTWATCH_BASE_URL = "https://www.justwatch.com/us/movie/"
+JUSTWATCH_HOST = urlparse(JUSTWATCH_BASE_URL).hostname
+JUSTWATCH_SCHEME = urlparse(JUSTWATCH_BASE_URL).scheme
 JUSTWATCH_ICON_BASE_URL = "https://images.justwatch.com"
 ICON_PROFILE = "s100"
 ICON_FORMAT = "webp"
@@ -61,6 +63,24 @@ def slugify(title):
 
 def build_url(title):
     return JUSTWATCH_BASE_URL + slugify(title)
+
+
+def is_justwatch_url(url):
+    """True if `url` is an https URL on JustWatch's own domain.
+
+    Guards the `url` override on scrape_title (and, by extension,
+    data.json's justwatch_url field) against being used as an open SSRF
+    proxy. Both call sites already require the admin API key, but a leaked
+    key or a mistaken entry shouldn't be able to make this server fetch
+    arbitrary internal or third-party URLs.
+    """
+    if not isinstance(url, str):
+        return False
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    return parsed.scheme == JUSTWATCH_SCHEME and parsed.hostname == JUSTWATCH_HOST
 
 
 def _extract_json_var(html, var_name):
@@ -151,6 +171,8 @@ def scrape_title(title, session=None, url=None):
     """
     session = session or requests.Session()
     url = url or build_url(title)
+    if not is_justwatch_url(url):
+        raise ScrapeError("Refusing to scrape non-JustWatch URL: {}".format(url))
 
     resp = session.get(url, headers={"User-Agent": USER_AGENT}, timeout=REQUEST_TIMEOUT)
     if resp.status_code == 404:
