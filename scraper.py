@@ -68,11 +68,10 @@ def build_url(title):
 def is_justwatch_url(url):
     """True if `url` is an https URL on JustWatch's own domain.
 
-    Guards the `url` override on scrape_title (and, by extension,
-    data.json's justwatch_url field) against being used as an open SSRF
-    proxy. Both call sites already require the admin API key, but a leaked
-    key or a mistaken entry shouldn't be able to make this server fetch
-    arbitrary internal or third-party URLs.
+    Guards the `url`/`justwatch_url` override on scrape_title against
+    being used as an open SSRF proxy. Callers already require the admin
+    API key, but a leaked key or a mistaken entry shouldn't be able to
+    make this server fetch arbitrary internal or third-party URLs.
     """
     if not isinstance(url, str):
         return False
@@ -163,8 +162,8 @@ def scrape_title(title, session=None, url=None):
 
     Pass `url` for titles whose guessed slug is wrong -- e.g. a collision
     JustWatch resolved with a year suffix it doesn't otherwise expose
-    ("Event Horizon" (the movie) vs. the TV series). `data.json` entries
-    carry this as an optional "justwatch_url" field.
+    ("Event Horizon" (the movie) vs. the TV series). Callers pass this as
+    an optional "justwatch_url" per film.
 
     Returns {"title": title, "url": ..., "service": [...]}.
     Raises ScrapeError if the page can't be found or parsed.

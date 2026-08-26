@@ -1,11 +1,11 @@
 # 31for31scraper
 
-A small Flask service that keeps [`data.json`](data.json) — the streaming
-links behind [31for31](https://31for31.vercel.app/) — up to date. It scrapes
-[JustWatch](https://www.justwatch.com) for each film and returns the current
-streaming offers (free / subscription / rent / buy, with prices and direct
-links), so the site's admin can refresh the whole list without hand-checking
-every title.
+A small, stateless Flask service that scrapes [JustWatch](https://www.justwatch.com)
+for current streaming offers (free / subscription / rent / buy, with
+prices and direct links) behind [31for31](https://31for31.vercel.app/).
+It stores no film list of its own — a caller supplies the films to scrape
+on every request, and gets current offers back. The frontend owns the
+actual film data (title / date / `justwatch_url`) in its own database.
 
 ## How it works
 
@@ -18,10 +18,10 @@ JustWatch URLs are guessed from the film title (lowercased, hyphenated,
 punctuation stripped — see `slugify()` in `scraper.py`). This works for most
 titles, but not all: JustWatch sometimes disambiguates a title collision
 (e.g. a movie vs. a TV series of the same name) with a slug that can't be
-derived from the title text at all. For those, add a `justwatch_url` field
-to the film's entry in `data.json` — see [Data format](#data-format) below.
-It's also common to catch typos in `data.json` this way (a scrape failing
-with "No JustWatch page found" is often just a misspelled title).
+derived from the title text at all. For those, the caller passes a
+`justwatch_url` override alongside the title (see the API section below).
+It's also a good way to catch typos in a title (a scrape failing with "No
+JustWatch page found" is often just a misspelled title).
 
 ## Setup
 
@@ -85,63 +85,39 @@ rather point another tool (Postman, Redoc, etc.) at it directly.
 ### `GET /api/health`
 
 No auth required. Always returns `200 {"status": "ok"}` if the process is
-up — a liveness check for uptime monitoring, not a check that JustWatch or
-`data.json` are reachable.
+up — a liveness check for uptime monitoring, not a check that JustWatch is
+reachable.
 
-### `GET /api/scrape`
+### `GET /api/scrape?title=...`
 
 Requires an `X-API-Key` header matching `ADMIN_API_KEY`. Requests without a
 valid key get `401 Unauthorized`; if the server has no `ADMIN_API_KEY`
-configured at all, requests get `500`.
+configured at all, requests get `500`. `title` is required — omitting it
+gets `400`.
 
-**No query params** — scrapes every film across every year in `data.json`
-and returns the same structure back, with each film's `service` array
-replaced by the current offers. Non-film keys (like `textContent`) pass
-through unchanged. Runs scrapes concurrently (a few requests at a time), so
-the full ~90-film list finishes in a few seconds, not minutes.
-
-```bash
-curl -H "X-API-Key: $ADMIN_API_KEY" http://127.0.0.1:5000/api/scrape
-```
-
-**`?title=`** — scrapes a single film ad hoc, without touching `data.json`.
-Useful for testing a title before adding it to the list, or for checking a
-`justwatch_url` override works before committing it.
+Scrapes a single film ad hoc and returns a `FilmResult`.
 
 ```bash
 curl -H "X-API-Key: $ADMIN_API_KEY" \
   "http://127.0.0.1:5000/api/scrape?title=The%20Strangers%20(2008)"
 ```
 
-**`?title=&url=`** — same as above, but scrapes the given URL directly
-instead of guessing the slug. This is how you'd try out a `justwatch_url`
-override before writing it to `data.json`.
+**`&url=`** — scrapes the given URL directly instead of guessing the slug
+from the title. This is how you'd try out a `justwatch_url` override
+before using it in a `POST` request.
 
 ```bash
 curl -H "X-API-Key: $ADMIN_API_KEY" \
   "http://127.0.0.1:5000/api/scrape?title=Event%20Horizon&url=https://www.justwatch.com/us/movie/event-horizon-1997"
 ```
 
-**A film that fails to scrape doesn't fail the whole request.** It comes
-back with `"service": []` and an `"error"` message explaining why (404,
-couldn't parse the page, etc.), so a bad title never blocks the other ~90.
-Check the response for `error` fields after a full scrape to see what needs
-a manual look.
+### `POST /api/scrape`
 
-**This endpoint only returns data — it never writes to `data.json`.**
-Review the response and copy the parts you want into `data.json` yourself
-(or script that step separately). This is deliberate: a bad scrape should
-never be able to silently overwrite real data.
-
-**`POST /api/scrape`** — stateless counterpart to the no-params `GET`
-above: instead of reading `data.json`, the film list comes from the
-request body. One `FilmResult` per input film, same order, same
-bounded-concurrency path (`scrape_titles()`) and same "one bad film
-doesn't fail the request" behavior as the `GET` batch path — a film with
-no valid `justwatch_url` just comes back with `error` set, same as a 404
-would. This is what a caller that owns its own film list (e.g. a frontend
-backed by a real database) should use instead of maintaining a shadow
-copy in this service's `data.json`.
+Same auth as above. Body is a JSON array of `{title, justwatch_url?}` —
+this is the one to use for more than a single film, since it's one
+invocation handling the whole list (via `scrape_titles()`'s bounded
+concurrency) rather than one round trip per film. Returns one `FilmResult`
+per input film, in the same order.
 
 ```bash
 curl -X POST -H "X-API-Key: $ADMIN_API_KEY" -H "Content-Type: application/json" \
@@ -149,91 +125,40 @@ curl -X POST -H "X-API-Key: $ADMIN_API_KEY" -H "Content-Type: application/json" 
   http://127.0.0.1:5000/api/scrape
 ```
 
-### `PUT /api/years/<year>` and `POST /api/years/<year>`
+**A film that fails to scrape doesn't fail the whole request.** It comes
+back with `"service": []` and an `"error"` message explaining why (404,
+bad `justwatch_url`, couldn't parse the page, etc.), so one bad title
+never blocks the rest of the list. Malformed input (body isn't an array,
+empty array, an item missing `title`) is the exception — that's a `400`
+for the whole request, since it's a client error, not a per-film scrape
+failure.
 
-Unlike `/api/scrape`, **these do write to `data.json`** — they manage which
-films exist for a year, independent of scraping their offers. `PUT`
-replaces a year's entire film list (idempotent — send the same body twice,
-same result); `POST` appends a single film to a year's existing list
-without touching the rest. Both need only `title` per film (`date` is
-optional); the server always computes `id` itself
-(`year * 100 + day-of-month`, or a random value >31 if `date` is omitted)
-and always starts `service` as `[]` — offers only ever come from
-`/api/scrape`.
+### Response shape
 
-```bash
-curl -X PUT -H "X-API-Key: $ADMIN_API_KEY" -H "Content-Type: application/json" \
-  -d '[{"title": "Some 2026 Movie", "date": "10/1/2026"}, {"title": "Another One", "date": "10/2/2026"}]' \
-  http://127.0.0.1:5000/api/years/2026
-
-curl -X POST -H "X-API-Key: $ADMIN_API_KEY" -H "Content-Type: application/json" \
-  -d '{"title": "A Late Addition", "date": "10/15/2026"}' \
-  http://127.0.0.1:5000/api/years/2026
-```
-
-**Important:** these only work where the filesystem is writable — local
-dev, not Vercel's read-only production filesystem. A write there comes
-back as a clean `500` rather than crashing, but it won't actually persist.
-This is intentional: it's a stepping stone toward writing to a real
-database (Supabase) instead of `data.json`, and the request/response
-shapes are designed to survive that move unchanged — see `_load_data()` /
-`_save_data()` in `app.py`, the one seam that migration needs to replace.
-
-## Data format
-
-`data.json` is a dict keyed by year (`"2024"`, `"2025"`, ...) plus a
-`textContent` key used for the site's copy (not a film list — left alone by
-the scraper). Each year is a list of film entries:
+Every offer in a `service` array looks like:
 
 ```json
 {
-  "id": 202526,
-  "date": "10/26/2025",
-  "title": "Event Horizon",
-  "justwatch_url": "https://www.justwatch.com/us/movie/event-horizon-1997",
-  "service": [
-    {
-      "name": "Kanopy",
-      "type": "free",
-      "price": null,
-      "currency": "USD",
-      "link": "https://www.kanopy.com/...",
-      "icon": "https://images.justwatch.com/icon/.../s100/kanopy.webp"
-    },
-    {
-      "name": "Amazon Video",
-      "type": "rent",
-      "price": 3.99,
-      "currency": "USD",
-      "link": "https://watch.amazon.com/...",
-      "icon": "https://images.justwatch.com/icon/.../s100/amazonvideo.webp"
-    }
-  ]
+  "name": "Amazon Video",
+  "type": "rent",
+  "price": 3.99,
+  "currency": "USD",
+  "link": "https://watch.amazon.com/...",
+  "icon": "https://images.justwatch.com/icon/.../s100/amazonvideo.webp"
 }
 ```
 
-- **`id`** — stable unique identifier: `year * 100 + day-of-month` (e.g. day
-  26 of 2025 → `202526`). If a year ever has more than 31 films, the
-  overflow entries get a random two-digit value greater than 31 instead of
-  a real day, so it stays unique but isn't a valid calendar day (see
-  `Terrifier 3` in the 2024 list, which has no `date`, for an example).
-  Exists so each film has a stable key independent of title text — useful
-  for anything keyed off a real identifier later (e.g. upserting into a
-  database, since `title` alone has had typos/duplicates in the past).
-- **`justwatch_url`** (optional) — set this when the guessed slug is wrong.
-  Takes priority over slug-guessing whenever present. Not required for most
-  films.
-- **`service[].type`** — one of `free`, `subscription`, `rent`, `buy`,
-  `cinema`, or `unknown` (JustWatch's monetization type, bucketed — see
+- **`type`** — one of `free`, `subscription`, `rent`, `buy`, `cinema`, or
+  `unknown` (JustWatch's monetization type, bucketed — see
   `MONETIZATION_TYPE_MAP` in `scraper.py`). `subscription` covers titles
   included with a service like Netflix or a channel add-on; there's no
   price for those.
 - **`price`** — `null` for free/subscription offers.
-- **`service[].icon`** — the service's icon, hosted on JustWatch's own
-  image CDN (`images.justwatch.com`) rather than scraped from each
-  individual streaming site — JustWatch already curates one per package,
-  and we get it for free from the same page we're already scraping. Fixed
-  at a 100px-wide profile and webp format (`ICON_PROFILE`/`ICON_FORMAT` in
+- **`icon`** — the service's icon, hosted on JustWatch's own image CDN
+  (`images.justwatch.com`) rather than scraped from each individual
+  streaming site — JustWatch already curates one per package, and we get
+  it for free from the same page we're already scraping. Fixed at a
+  100px-wide profile and webp format (`ICON_PROFILE`/`ICON_FORMAT` in
   `scraper.py`); `null` if JustWatch had no icon path for that package.
 
 ## Deployment (Vercel)
@@ -253,29 +178,25 @@ lives.
 
 Last audited 2026-08-08 against SQL injection, brute force, SSRF, path
 traversal, command injection, CSRF, XSS, mass assignment, unsafe
-deserialization, ReDoS, and dependency pinning.
+deserialization, ReDoS, and dependency pinning. (This service has since
+gone fully stateless -- see below -- but the findings below still apply
+to what remains.)
 
-- **All state-changing endpoints require `ADMIN_API_KEY`** via the
-  `X-API-Key` header, compared with `hmac.compare_digest` (constant-time —
-  plain `!=` leaks timing information proportional to how many leading
-  characters match).
-- **`/api/scrape`'s `url` param and `justwatch_url` in `data.json` are
-  restricted to `https://www.justwatch.com/...`** (`is_justwatch_url()` in
-  `scraper.py`, enforced both at scrape time and at write time via
-  `PUT`/`POST /api/years`). Without this, either one would let an
-  authenticated caller make the server fetch arbitrary URLs on its
-  behalf — an open SSRF proxy if the API key ever leaked, e.g. to probe
-  Vercel's internal network or cloud metadata endpoints.
-- **No SQL database yet** (`data.json` only), so SQL injection doesn't
-  apply today. Once Supabase lands: use `supabase-py`'s query builder or
-  parameterized queries, never hand-built SQL strings.
-- **`year` in `/api/years/<year>` is regex-validated** to exactly 4 digits
-  before being used (as a dict key, not a filesystem path) — no path
-  traversal surface.
-- **`PUT`/`POST /api/years` whitelist exactly `title`/`date`/`justwatch_url`**
-  from the request body; any other field (including attempts to set `id`,
-  `service`, or `error` directly) is silently ignored — no mass-assignment
-  surface.
+- **`/api/scrape` requires `ADMIN_API_KEY`** via the `X-API-Key` header,
+  compared with `hmac.compare_digest` (constant-time — plain `!=` leaks
+  timing information proportional to how many leading characters match).
+- **`url` (GET) and `justwatch_url` (POST body) are restricted to
+  `https://www.justwatch.com/...`** (`is_justwatch_url()` in
+  `scraper.py`). Without this, either one would let an authenticated
+  caller make the server fetch arbitrary URLs on its behalf — an open
+  SSRF proxy if the API key ever leaked, e.g. to probe Vercel's internal
+  network or cloud metadata endpoints.
+- **No SQL database, and nothing persisted at all** — this service reads
+  JustWatch and returns JSON; it doesn't store anything. SQL injection
+  doesn't apply here. (The frontend's own Supabase database is out of
+  scope for this repo, but the same principle holds there: use
+  `supabase-py`'s query builder or parameterized queries, never
+  hand-built SQL strings.)
 - **`requirements.txt`/`requirements-dev.txt` are pinned to exact
   versions**, not left open-ended, so deploys are reproducible and don't
   silently pick up a new (possibly broken or vulnerable) release.
@@ -289,6 +210,12 @@ deserialization, ReDoS, and dependency pinning.
 
 ## Notes for whoever touches this next
 
+- This service used to store its own copy of the film list in
+  `data.json`, with `PUT`/`POST /api/years/<year>` to manage it. That's
+  gone — the frontend's Supabase database is now the single source of
+  truth for which films exist, and `POST /api/scrape` takes that list as
+  input instead. If you're looking for that code, it's in history before
+  the removal (tracked as issue #15 in this repo).
 - The scraper reads `robots.txt` on justwatch.com as of writing and it
   allows crawling. Still, keep concurrency modest (`MAX_CONCURRENT_REQUESTS`
   in `scraper.py`) — this only needs to run a handful of times a year, no
@@ -296,5 +223,3 @@ deserialization, ReDoS, and dependency pinning.
 - If JustWatch changes their page structure, the break point is
   `_extract_json_var` / `_find_offer_refs` in `scraper.py` — both depend on
   the shape of `window.__APOLLO_STATE__`, which isn't a public/stable API.
-- The film list grows to 93 titles in October — no code changes needed for
-  that, just more `data.json` entries.
