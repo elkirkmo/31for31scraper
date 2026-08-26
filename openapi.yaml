@@ -3,9 +3,10 @@ info:
   title: 31for31 JustWatch Scraper API
   description: >
     Scrapes JustWatch for current streaming offers (free / subscription /
-    rent / buy) for the films tracked in `data.json`, so the 31for31 site's
-    streaming links can be refreshed without hand-checking every title.
-    See the [README](README.md) for how the scraping itself works.
+    rent / buy) for a caller-supplied list of films -- stateless, no film
+    list stored here -- so a frontend backed by its own database can
+    refresh streaming links without hand-checking every title. See the
+    [README](README.md) for how the scraping itself works.
   version: "1.0.0"
   license:
     name: MIT
@@ -21,14 +22,6 @@ tags:
     description: Liveness check
   - name: Scrape
     description: JustWatch scraping
-  - name: Years
-    description: >
-      Managing which films exist for a given year, independent of scraping
-      their offers. Currently backed by data.json -- writes only succeed
-      where the filesystem is writable (local dev), not on Vercel's
-      read-only production filesystem. This is expected to move to a real
-      database (Supabase) later; the request/response shapes are designed
-      to survive that move unchanged.
 
 paths:
   /api/health:
@@ -38,9 +31,9 @@ paths:
       summary: Health check
       description: >
         Returns 200 if the API process is up and responding to requests.
-        Does not check JustWatch reachability, `data.json` readability, or
-        anything beyond "the server is running" -- a shallow liveness probe,
-        not a readiness check. Does not require authentication.
+        Does not check JustWatch reachability or anything beyond "the
+        server is running" -- a shallow liveness probe, not a readiness
+        check. Does not require authentication.
       security: []
       responses:
         "200":
@@ -56,32 +49,19 @@ paths:
     get:
       operationId: scrape
       tags: [Scrape]
-      summary: Scrape current JustWatch streaming offers
+      summary: Scrape a single film's current JustWatch streaming offers
       description: >
-        **Without `title`**: scrapes every film across every year in
-        `data.json` and returns the same structure back, with each film's
-        `service` array replaced by its current offers. This endpoint never
-        writes to `data.json` -- review the response and copy in what you
-        want. A single film failing to scrape does not fail the request;
-        that film's entry comes back with an empty `service` array and an
-        `error` field instead (see the `BatchScrapeResponse` schema).
-
-
-        **With `title`**: scrapes a single film ad hoc, without touching
-        `data.json`. Useful for testing a title, or a `justwatch_url`
-        override, before adding/changing it in `data.json`. The response
-        shape changes to a single `FilmResult` object instead of the
-        year-keyed batch structure.
+        Scrapes one film ad hoc and returns a `FilmResult`. For more than
+        one film in a single request, use `POST /api/scrape` instead --
+        it's the same underlying scrape, just for a caller-supplied list,
+        with far fewer round trips.
       security:
         - ApiKeyAuth: []
       parameters:
         - name: title
           in: query
-          required: false
-          description: >
-            Scrape a single film by title instead of every film in
-            `data.json`. When present, the response is a `FilmResult`
-            instead of a `BatchScrapeResponse`.
+          required: true
+          description: The film to scrape.
           schema:
             type: string
           example: "The Strangers (2008)"
@@ -89,63 +69,41 @@ paths:
           in: query
           required: false
           description: >
-            Only meaningful together with `title`. Scrapes this exact
-            JustWatch URL directly instead of guessing the slug from the
-            title -- this is how you'd try out a `justwatch_url` override
-            before writing it to `data.json`. Must be an `https://www.justwatch.com/...`
-            URL -- anything else is rejected (this endpoint won't fetch
-            arbitrary URLs on your behalf).
+            Scrapes this exact JustWatch URL directly instead of guessing
+            the slug from the title -- this is how you'd try out a
+            `justwatch_url` override before using it elsewhere. Must be an
+            `https://www.justwatch.com/...` URL -- anything else is
+            rejected (this endpoint won't fetch arbitrary URLs on your
+            behalf).
           schema:
             type: string
             format: uri
           example: "https://www.justwatch.com/us/movie/event-horizon-1997"
       responses:
         "200":
-          description: >
-            Scrape succeeded. Returns a `BatchScrapeResponse` when `title`
-            was omitted, or a `FilmResult` when `title` was provided.
+          description: Scrape succeeded.
           content:
             application/json:
               schema:
-                oneOf:
-                  - $ref: "#/components/schemas/BatchScrapeResponse"
-                  - $ref: "#/components/schemas/FilmResult"
-              examples:
-                batch:
-                  summary: Full data.json scrape (no title param)
-                  value:
-                    "2025":
-                      - id: 202526
-                        date: "10/26/2025"
-                        title: "Event Horizon"
-                        justwatch_url: "https://www.justwatch.com/us/movie/event-horizon-1997"
-                        service:
-                          - name: "Kanopy"
-                            type: "free"
-                            price: null
-                            currency: "USD"
-                            link: "https://www.kanopy.com/en/title/..."
-                            icon: "https://images.justwatch.com/icon/.../s100/kanopy.webp"
-                          - name: "Amazon Video"
-                            type: "rent"
-                            price: 3.99
-                            currency: "USD"
-                            link: "https://watch.amazon.com/detail?..."
-                            icon: "https://images.justwatch.com/icon/.../s100/amazonvideo.webp"
-                    textContent:
-                      heading: "31 for 31"
-                single:
-                  summary: "Single-title scrape (?title=...)"
-                  value:
-                    title: "The Thing From Another World"
-                    url: "https://www.justwatch.com/us/movie/the-thing-from-another-world"
-                    service:
-                      - name: "The Roku Channel"
-                        type: "free"
-                        price: null
-                        currency: "USD"
-                        link: "https://therokuchannel.roku.com/details/..."
-                        icon: "https://images.justwatch.com/icon/76972041/s100/rokuchannel.webp"
+                $ref: "#/components/schemas/FilmResult"
+              example:
+                title: "The Thing From Another World"
+                url: "https://www.justwatch.com/us/movie/the-thing-from-another-world"
+                service:
+                  - name: "The Roku Channel"
+                    type: "free"
+                    price: null
+                    currency: "USD"
+                    link: "https://therokuchannel.roku.com/details/..."
+                    icon: "https://images.justwatch.com/icon/76972041/s100/rokuchannel.webp"
+        "400":
+          description: The `title` query param was omitted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: '"title" query param is required'
         "401":
           description: Missing or incorrect `X-API-Key` header.
           content:
@@ -156,11 +114,8 @@ paths:
                 error: "Unauthorized"
         "404":
           description: >
-            `title` was provided but no JustWatch page could be found or
-            parsed for it (e.g. the guessed slug 404s, or the title is
-            misspelled). Only possible in single-title mode -- a batch
-            scrape reports per-film failures inline in its 200 response
-            instead.
+            No JustWatch page could be found or parsed for `title` (e.g.
+            the guessed slug 404s, or the title is misspelled).
           content:
             application/json:
               schema:
@@ -182,12 +137,10 @@ paths:
                 error: "ADMIN_API_KEY is not configured on the server"
         "502":
           description: >
-            `title` was provided and the request to JustWatch itself failed
-            (timeout, connection error, DNS failure, non-404 HTTP error,
-            etc.) -- distinct from 404, which means JustWatch responded but
-            the title genuinely wasn't found. Only possible in single-title
-            mode -- a batch scrape reports per-film network failures inline
-            in its 200 response instead.
+            The request to JustWatch itself failed (timeout, connection
+            error, DNS failure, non-404 HTTP error, etc.) -- distinct from
+            404, which means JustWatch responded but the title genuinely
+            wasn't found.
           content:
             application/json:
               schema:
@@ -201,15 +154,14 @@ paths:
       tags: [Scrape]
       summary: Scrape a caller-supplied list of films
       description: >
-        Stateless counterpart to the `GET` batch path: instead of reading
-        `data.json`, the film list comes from the request body. Returns one
-        `FilmResult` per input film, in the same order, via the same
-        bounded-concurrency `scrape_titles()` path the `GET` batch scrape
-        already uses -- same performance characteristics, just sourced
-        differently. A single film failing (404, bad `justwatch_url`,
-        network error) doesn't fail the request; that film's result just
-        carries `service: []` and an `error`, exactly like the `GET` batch
-        path already does per film.
+        Stateless: this service stores no film list of its own, so the
+        caller supplies one on every request. Returns one `FilmResult`
+        per input film, in the same order, via a bounded-concurrency
+        path (`scrape_titles()`) -- one invocation handles the whole
+        list rather than one round trip per film. A single film failing
+        (404, bad `justwatch_url`, network error) doesn't fail the
+        request; that film's result just carries `service: []` and an
+        `error`.
       security:
         - ApiKeyAuth: []
       requestBody:
@@ -253,137 +205,6 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: The server has no `ADMIN_API_KEY` configured.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /api/years/{year}:
-    parameters:
-      - name: year
-        in: path
-        required: true
-        description: A 4-digit year, e.g. `2026`.
-        schema:
-          type: string
-          pattern: "^\\d{4}$"
-        example: "2026"
-    put:
-      operationId: replaceYear
-      tags: [Years]
-      summary: Replace a year's entire film list
-      description: >
-        Idempotent: PUT the same body twice, same result. Replaces
-        whatever film list currently exists for `year` (or creates it, if
-        it doesn't exist yet) with exactly the films given. Each film only
-        needs `title`; `date` is optional. The server always computes
-        `id` itself (`year * 100 + day-of-month`, or a random value > 31
-        if `date` is omitted) and always starts `service` as `[]` --
-        offers only come from `/api/scrape`. Any `id`/`service`/`error`
-        fields in the request body are ignored. Validates the entire list
-        before writing anything: one bad film fails the whole request,
-        nothing is partially written.
-      security:
-        - ApiKeyAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: array
-              items:
-                $ref: "#/components/schemas/FilmInput"
-            example:
-              - title: "Some 2026 Movie"
-                date: "10/1/2026"
-              - title: "Another 2026 Movie"
-                date: "10/2/2026"
-                justwatch_url: "https://www.justwatch.com/us/movie/another-2026-movie"
-      responses:
-        "200":
-          description: The year's new film list, as stored (with computed ids).
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/FilmEntry"
-        "400":
-          description: >
-            Malformed request: body isn't a JSON array, a film is missing
-            `title`, `date` doesn't match `M/D/YYYY`, `date`'s year
-            doesn't match the `{year}` path parameter, the day is out of
-            1-31, two films in the list share the same `date`, or
-            `justwatch_url` isn't an `https://www.justwatch.com/...` URL.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Missing or incorrect `X-API-Key` header.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: >
-            Could not persist the change -- most likely because the
-            filesystem is read-only (e.g. Vercel production). Works in
-            local dev.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                error: "Could not write data.json: [Errno 30] Read-only file system. This endpoint needs a writable filesystem..."
-    post:
-      operationId: addFilm
-      tags: [Years]
-      summary: Add a single film to a year's list
-      description: >
-        Appends one new film to `year`'s existing list (creating `year` if
-        it doesn't exist yet). Unlike PUT, this does not touch any film
-        already in the list. Rejected with 400 if the given `date`
-        collides with a film already in that year.
-      security:
-        - ApiKeyAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/FilmInput"
-            example:
-              title: "A Late Addition"
-              date: "10/15/2026"
-      responses:
-        "201":
-          description: The newly created film entry, with its computed id.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FilmEntry"
-        "400":
-          description: >
-            Malformed request: body isn't a JSON object, missing `title`,
-            invalid `date`, `date` collides with a film already in `year`,
-            or `justwatch_url` isn't an `https://www.justwatch.com/...`
-            URL.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Missing or incorrect `X-API-Key` header.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: >
-            Could not persist the change -- most likely because the
-            filesystem is read-only (e.g. Vercel production). Works in
-            local dev.
           content:
             application/json:
               schema:
@@ -458,95 +279,12 @@ components:
           type: string
           format: uri
           description: >
-            Optional override, same as data.json's field of the same name.
-            Must be an `https://www.justwatch.com/...` URL -- a URL
-            elsewhere fails only this one film (with an `error` in the
-            response), not the whole request.
+            Optional override for titles whose JustWatch slug can't be
+            guessed from the title text. Must be an
+            `https://www.justwatch.com/...` URL -- a URL elsewhere fails
+            only this one film (with an `error` in the response), not the
+            whole request.
           example: "https://www.justwatch.com/us/movie/le-cercle"
-
-    FilmInput:
-      type: object
-      description: >
-        What the caller supplies to PUT/POST `/api/years/{year}`. The
-        server computes `id` and `service` itself -- don't send them (they
-        are ignored if present).
-      required: [title]
-      properties:
-        title:
-          type: string
-          description: Non-empty; leading/trailing whitespace is trimmed.
-          example: "Some 2026 Movie"
-        date:
-          type: string
-          description: >
-            `M/D/YYYY`, where YYYY must match the `{year}` path parameter
-            and D must be 1-31. Omit entirely (or send `""`) for a film
-            with no set date yet -- it gets a random id instead of a
-            real calendar day.
-          example: "10/1/2026"
-        justwatch_url:
-          type: string
-          format: uri
-          description: >
-            Optional. Same override as in data.json -- see FilmEntry. Must
-            be an `https://www.justwatch.com/...` URL; rejected with 400
-            otherwise.
-
-    FilmEntry:
-      type: object
-      description: >
-        One film's entry within a `BatchScrapeResponse` year. Preserves
-        whatever fields the film had in `data.json` (typically `id`, `date`,
-        `title`, and optionally `justwatch_url`); `service` is always
-        replaced with current offers, and `error` is added only if this
-        film's scrape failed.
-      additionalProperties: true
-      required: [id, title, service]
-      properties:
-        id:
-          type: integer
-          description: >
-            Stable unique identifier: `year * 100 + day-of-month` (e.g. `1`
-            -> `202501`, `26` -> `202526`). For a year with more than 31
-            films, the overflow entries get a randomly assigned two-digit
-            value greater than 31 instead of a real day-of-month, so it
-            stays unique but isn't a valid calendar day.
-          example: 202526
-        date:
-          type: string
-          example: "10/26/2025"
-        title:
-          type: string
-          example: "Event Horizon"
-        justwatch_url:
-          type: string
-          format: uri
-          nullable: true
-          description: >
-            Optional override set in `data.json` for titles whose JustWatch
-            slug can't be guessed from the title text. Takes priority over
-            slug-guessing whenever present.
-        service:
-          type: array
-          items:
-            $ref: "#/components/schemas/Offer"
-        error:
-          type: string
-          nullable: true
-          description: Present only if this film's scrape failed; `service` will be empty.
-
-    BatchScrapeResponse:
-      type: object
-      description: >
-        Keyed by year (e.g. `"2024"`, `"2025"`), each holding a list of
-        `FilmEntry` objects. Non-film keys present in `data.json` (e.g.
-        `textContent`, the site's copy) pass through completely unchanged.
-      additionalProperties:
-        oneOf:
-          - type: array
-            items:
-              $ref: "#/components/schemas/FilmEntry"
-          - description: Passthrough value for a non-film key (e.g. `textContent`).
 
     FilmResult:
       type: object
