@@ -196,6 +196,67 @@ paths:
                 title: "Blood Feast"
                 service: []
                 error: "HTTPSConnectionPool(host='www.justwatch.com', port=443): Read timed out."
+    post:
+      operationId: scrapeBatch
+      tags: [Scrape]
+      summary: Scrape a caller-supplied list of films
+      description: >
+        Stateless counterpart to the `GET` batch path: instead of reading
+        `data.json`, the film list comes from the request body. Returns one
+        `FilmResult` per input film, in the same order, via the same
+        bounded-concurrency `scrape_titles()` path the `GET` batch scrape
+        already uses -- same performance characteristics, just sourced
+        differently. A single film failing (404, bad `justwatch_url`,
+        network error) doesn't fail the request; that film's result just
+        carries `service: []` and an `error`, exactly like the `GET` batch
+        path already does per film.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              minItems: 1
+              items:
+                $ref: "#/components/schemas/ScrapeBatchFilm"
+            example:
+              - title: "The Ring"
+                justwatch_url: "https://www.justwatch.com/us/movie/le-cercle"
+              - title: "Hereditary"
+      responses:
+        "200":
+          description: One FilmResult per input film, in the same order as the request.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FilmResult"
+        "400":
+          description: >
+            Malformed request: body isn't a JSON array, the array is
+            empty, an item isn't a JSON object, or an item is missing
+            `title`. A bad `justwatch_url` is *not* a 400 here -- it
+            fails only that one film (see the `200` response), the same
+            way `?url=` failing fails only that one request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or incorrect `X-API-Key` header.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: The server has no `ADMIN_API_KEY` configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/years/{year}:
     parameters:
@@ -383,6 +444,25 @@ components:
             at a 100px-wide profile and webp format. Null if JustWatch had
             no icon path for this package.
           example: "https://images.justwatch.com/icon/76972041/s100/rokuchannel.webp"
+
+    ScrapeBatchFilm:
+      type: object
+      description: One film to scrape, as supplied to POST /api/scrape.
+      required: [title]
+      properties:
+        title:
+          type: string
+          description: Non-empty. Used to guess the JustWatch slug when justwatch_url is omitted.
+          example: "Hereditary"
+        justwatch_url:
+          type: string
+          format: uri
+          description: >
+            Optional override, same as data.json's field of the same name.
+            Must be an `https://www.justwatch.com/...` URL -- a URL
+            elsewhere fails only this one film (with an `error` in the
+            response), not the whole request.
+          example: "https://www.justwatch.com/us/movie/le-cercle"
 
     FilmInput:
       type: object
