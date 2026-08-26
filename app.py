@@ -155,6 +155,36 @@ def scrape():
     return jsonify(output)
 
 
+@app.route("/api/scrape", methods=["POST"])
+def scrape_batch():
+    """Scrape a caller-supplied list of films, statelessly -- no data.json involved.
+
+    Body: a JSON array of {"title": ..., "justwatch_url": ...} (justwatch_url
+    optional). Returns one FilmResult per input film, in order. A single
+    film failing (404, bad justwatch_url, network error, ...) doesn't fail
+    the request -- scrape_titles() already reports that inline via the
+    result's "error" field, same as the GET batch path always has.
+    """
+    auth_error = _check_auth()
+    if auth_error:
+        return auth_error
+
+    films = request.get_json(silent=True)
+    if not isinstance(films, list) or not films:
+        return jsonify({"error": "request body must be a non-empty JSON array of films"}), 400
+
+    titles = []
+    for film in films:
+        if not isinstance(film, dict):
+            return jsonify({"error": "each film must be a JSON object"}), 400
+        title = film.get("title")
+        if not isinstance(title, str) or not title.strip():
+            return jsonify({"error": 'each film needs a non-empty "title"'}), 400
+        titles.append((title.strip(), film.get("justwatch_url")))
+
+    return jsonify(scrape_titles(titles))
+
+
 def _write_or_500(data):
     """Attempt to persist data.json, returning a Flask error response on failure."""
     try:

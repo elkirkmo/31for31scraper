@@ -133,6 +133,22 @@ Review the response and copy the parts you want into `data.json` yourself
 (or script that step separately). This is deliberate: a bad scrape should
 never be able to silently overwrite real data.
 
+**`POST /api/scrape`** — stateless counterpart to the no-params `GET`
+above: instead of reading `data.json`, the film list comes from the
+request body. One `FilmResult` per input film, same order, same
+bounded-concurrency path (`scrape_titles()`) and same "one bad film
+doesn't fail the request" behavior as the `GET` batch path — a film with
+no valid `justwatch_url` just comes back with `error` set, same as a 404
+would. This is what a caller that owns its own film list (e.g. a frontend
+backed by a real database) should use instead of maintaining a shadow
+copy in this service's `data.json`.
+
+```bash
+curl -X POST -H "X-API-Key: $ADMIN_API_KEY" -H "Content-Type: application/json" \
+  -d '[{"title": "The Ring", "justwatch_url": "https://www.justwatch.com/us/movie/le-cercle"}, {"title": "Hereditary"}]' \
+  http://127.0.0.1:5000/api/scrape
+```
+
 ### `PUT /api/years/<year>` and `POST /api/years/<year>`
 
 Unlike `/api/scrape`, **these do write to `data.json`** — they manage which

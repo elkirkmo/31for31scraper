@@ -61,8 +61,10 @@ class TestAuth:
         assert resp.status_code == 500
         assert "ADMIN_API_KEY" in resp.get_json()["error"]
 
-    def test_post_method_not_allowed_returns_405(self, client, api_key):
-        resp = client.post("/api/scrape", headers={"X-API-Key": api_key})
+    def test_delete_method_not_allowed_returns_405(self, client, api_key):
+        # GET (batch/single-title) and POST (caller-supplied list) are both
+        # valid on /api/scrape; DELETE isn't a thing this endpoint does.
+        resp = client.delete("/api/scrape", headers={"X-API-Key": api_key})
         assert resp.status_code == 405
 
 
@@ -240,6 +242,106 @@ class TestFullScrape:
 
         assert resp.status_code == 200
         assert resp.get_json()["someFlag"] is True
+
+
+class TestScrapeBatchPost:
+    def test_missing_auth_returns_401(self, client, api_key):
+        resp = client.post("/api/scrape", json=[{"title": "X"}])
+        assert resp.status_code == 401
+
+    def test_non_list_body_returns_400(self, client, auth_headers):
+        resp = client.post("/api/scrape", json={"title": "X"}, headers=auth_headers)
+        assert resp.status_code == 400
+
+    def test_empty_list_returns_400(self, client, auth_headers):
+        resp = client.post("/api/scrape", json=[], headers=auth_headers)
+        assert resp.status_code == 400
+
+    def test_malformed_json_body_returns_400(self, client, auth_headers):
+        resp = client.post(
+            "/api/scrape",
+            data="{not valid json",
+            headers={**auth_headers, "Content-Type": "application/json"},
+        )
+        assert resp.status_code == 400
+
+    def test_array_item_that_is_not_an_object_returns_400(self, client, auth_headers):
+        resp = client.post("/api/scrape", json=["not an object"], headers=auth_headers)
+        assert resp.status_code == 400
+        assert "must be a JSON object" in resp.get_json()["error"]
+
+    def test_item_missing_title_returns_400(self, client, auth_headers):
+        resp = client.post("/api/scrape", json=[{"justwatch_url": "https://www.justwatch.com/us/movie/x"}], headers=auth_headers)
+        assert resp.status_code == 400
+        assert "title" in resp.get_json()["error"]
+
+    @responses.activate
+    def test_success_returns_one_film_result_per_input_in_order(self, client, auth_headers):
+        responses.add(
+            responses.GET, JUSTWATCH_BASE + "the-thing-from-another-world",
+            body=load_fixture("the_thing_from_another_world.html"), status=200,
+        )
+        responses.add(responses.GET, JUSTWATCH_BASE + "not-a-real-movie", status=404)
+
+        resp = client.post(
+            "/api/scrape",
+            json=[
+                {"title": "The Thing From Another World"},
+                {"title": "Not A Real Movie"},
+            ],
+            headers=auth_headers,
+        )
+
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert [f["title"] for f in body] == ["The Thing From Another World", "Not A Real Movie"]
+        assert len(body[0]["service"]) == 11
+        assert "error" not in body[0]
+        assert body[1]["service"] == []
+        assert "error" in body[1]
+
+    @responses.activate
+    def test_justwatch_url_override_is_used_and_validated_like_the_url_param(self, client, auth_headers):
+        # Points somewhere other than what the title would guess -- proves
+        # the override is honored, same mechanic as ?title=&url=.
+        responses.add(
+            responses.GET, JUSTWATCH_BASE + "the-thing-from-another-world",
+            body=load_fixture("the_thing_from_another_world.html"), status=200,
+        )
+
+        resp = client.post(
+            "/api/scrape",
+            json=[{"title": "Some Other Title", "justwatch_url": JUSTWATCH_BASE + "the-thing-from-another-world"}],
+            headers=auth_headers,
+        )
+
+        assert resp.status_code == 200
+        assert len(resp.get_json()[0]["service"]) == 11
+
+    def test_justwatch_url_pointing_off_justwatch_becomes_a_per_film_error_not_a_400(self, client, auth_headers):
+        # SSRF guard reused from scrape_title() -- a bad justwatch_url
+        # here fails that one film, not the whole batch, consistent with
+        # every other per-film scrape failure.
+        resp = client.post(
+            "/api/scrape",
+            json=[{"title": "Evil", "justwatch_url": "https://example.com"}],
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()[0]
+        assert body["service"] == []
+        assert "Refusing to scrape non-JustWatch URL" in body["error"]
+
+    def test_does_not_touch_data_json(self, client, auth_headers, data_file):
+        # Stateless: this endpoint never reads or writes data.json at all.
+        path = data_file({"2025": [{"id": 1, "title": "Untouched", "service": []}]})
+        before = path.read_text()
+
+        with responses.RequestsMock(assert_all_requests_are_fired=False) as rsps:
+            rsps.add(responses.GET, JUSTWATCH_BASE + "not-a-real-movie", status=404)
+            client.post("/api/scrape", json=[{"title": "Not A Real Movie"}], headers=auth_headers)
+
+        assert path.read_text() == before
 
 
 class TestPutYear:
