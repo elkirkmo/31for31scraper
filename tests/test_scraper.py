@@ -101,11 +101,20 @@ class TestExtractJsonVar:
 
 class TestResolveRef:
     def test_follows_id_ref_into_cache(self):
+        # Old Vue/Apollo page reference shape.
         cache = {"Movie:1": {"title": "X"}}
         assert _resolve_ref(cache, {"type": "id", "id": "Movie:1"}) == {"title": "X"}
 
+    def test_follows_apollo3_ref_into_cache(self):
+        # New Nuxt page reference shape (Apollo Client 3's {"__ref": id}).
+        cache = {"Movie:1": {"title": "X"}}
+        assert _resolve_ref(cache, {"__ref": "Movie:1"}) == {"title": "X"}
+
     def test_id_ref_missing_from_cache_returns_empty_dict(self):
         assert _resolve_ref({}, {"type": "id", "id": "Movie:missing"}) == {}
+
+    def test_apollo3_ref_missing_from_cache_returns_empty_dict(self):
+        assert _resolve_ref({}, {"__ref": "Movie:missing"}) == {}
 
     def test_none_ref_returns_empty_dict(self):
         assert _resolve_ref({}, None) == {}
@@ -218,6 +227,39 @@ class TestScrapeTitle:
         amazon_rent = next(s for s in result["service"] if s["name"] == "Amazon Video" and s["type"] == "rent")
         assert amazon_rent["price"] == 2.99
         assert amazon_rent["currency"] == "USD"
+
+    @responses.activate
+    def test_scrapes_new_nuxt_page_format(self):
+        # JustWatch is migrating title pages from the old Vue frontend
+        # (window.__APOLLO_STATE__) to a Nuxt one that serializes the same
+        # Apollo cache inside <script id="__NUXT_DATA__"> in devalue's
+        # index-referenced form, with {"__ref": id} references. Same offers
+        # must come out; the curated "jwt" and physical DVD lists still get
+        # skipped in favour of the real streaming offers.
+        url = JUSTWATCH_BASE + "the-ring"
+        responses.add(
+            responses.GET, url, body=load_fixture("nuxt_the_ring.html"), status=200,
+        )
+
+        result = scrape_title("The Ring", url=url)
+
+        assert result["url"] == url
+        assert len(result["service"]) == 2
+
+        sub = next(s for s in result["service"] if s["type"] == "subscription")
+        assert sub == {
+            "name": "Paramount Plus",
+            "type": "subscription",
+            "price": None,
+            "currency": "USD",
+            "link": "https://www.paramountplus.com/movies/the-ring/",
+            "icon": "https://images.justwatch.com/icon/100/s100/paramountplus.webp",
+        }
+
+        rent = next(s for s in result["service"] if s["type"] == "rent")
+        assert rent["name"] == "Amazon Video"
+        assert rent["price"] == 3.99
+        assert rent["currency"] == "USD"
 
     @responses.activate
     def test_404_raises_scrape_error(self):
