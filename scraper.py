@@ -1,9 +1,19 @@
 """Scrapes current streaming offers for a film from its JustWatch page.
 
-JustWatch server-renders each title page with a `window.__APOLLO_STATE__`
-blob containing the normalized GraphQL cache used to build the page. That
-cache holds the exact data we need (which services carry the film, at what
-price, under what monetization type) without needing a headless browser.
+JustWatch server-renders each title page with the normalized Apollo GraphQL
+cache it used to build the page. That cache holds the exact data we need
+(which services carry the film, at what price, under what monetization type)
+without needing a headless browser.
+
+There are two page generations in the wild, and JustWatch is migrating title
+by title from the first to the second, so we support both:
+
+* Old Vue frontend: `window.__APOLLO_STATE__={...}`, whose "defaultClient" is
+  the cache, with references encoded as {"type":"id","id":...}.
+* New Nuxt frontend: the same cache, serialized inside
+  `<script id="__NUXT_DATA__">` in devalue's index-referenced array form under
+  the "apollo:default" client, with references encoded as {"__ref":...}
+  (Apollo Client 3).
 """
 import json
 import re
@@ -97,9 +107,98 @@ def _extract_json_var(html, var_name):
         raise ScrapeError("Could not parse {}: {}".format(var_name, exc))
 
 
+def _extract_nuxt_apollo_cache(html):
+    """Reconstruct the Apollo cache from a Nuxt page's __NUXT_DATA__ payload.
+
+    Nuxt serializes its payload with `devalue`: a flat JSON array where every
+    value is hoisted into its own slot and referenced by integer index, with a
+    handful of string-tagged tuples (e.g. ["ShallowReactive", 1]) for reactive
+    wrappers. We don't need to understand the whole tree -- the Apollo cache is
+    the one hoisted object keyed by entity ids, which is the only dict carrying
+    a "ROOT_QUERY" entry. Resolving that slot back yields the same
+    {entityId: entity} shape as the old __APOLLO_STATE__ cache.
+    """
+    match = re.search(r'<script[^>]*\bid="__NUXT_DATA__"[^>]*>', html)
+    if not match:
+        raise ScrapeError("__APOLLO_STATE__ not found on page")
+    start = match.end()
+    end = html.find("</script>", start)
+    if end == -1:
+        raise ScrapeError("Could not find end of __NUXT_DATA__ script tag")
+    try:
+        flat = json.loads(html[start:end])
+    except ValueError as exc:
+        raise ScrapeError("Could not parse __NUXT_DATA__: {}".format(exc))
+    if not isinstance(flat, list):
+        raise ScrapeError("Unexpected __NUXT_DATA__ shape")
+
+    cache_index = next(
+        (i for i, v in enumerate(flat) if isinstance(v, dict) and "ROOT_QUERY" in v),
+        None,
+    )
+    if cache_index is None:
+        raise ScrapeError("__APOLLO_STATE__ not found on page")
+    return _resolve_nuxt_index(flat, cache_index)
+
+
+def _resolve_nuxt_index(flat, root_index):
+    """Walk a devalue-flattened array back into ordinary nested dicts/lists.
+
+    Each slot is a scalar, an object/array whose members are indices into
+    `flat`, or a string-tagged tuple for a special type (we unwrap those to
+    their payload -- the only ones on the path into the Apollo cache are
+    Nuxt's reactive/ref wrappers). Memoized so repeated indices resolve to the
+    same object and any cycle resolves to a single shared instance.
+    """
+    memo = {}
+
+    def resolve(index):
+        if not isinstance(index, int) or isinstance(index, bool):
+            return index
+        # devalue's negative sentinels (undefined/NaN/Infinity) never appear in
+        # the JSON-shaped Apollo cache; collapse them to None rather than guess.
+        if index < 0:
+            return None
+        if index in memo:
+            return memo[index]
+        value = flat[index]
+        if isinstance(value, dict):
+            out = {}
+            memo[index] = out  # seed before recursing so cycles land back here
+            for key, ref in value.items():
+                out[key] = resolve(ref)
+            return out
+        if isinstance(value, list):
+            if value and isinstance(value[0], str):
+                # String-tagged tuple, not a plain array (whose members would
+                # all be integer indices). Unwrap to its payload.
+                inner = resolve(value[1]) if len(value) > 1 else None
+                memo[index] = inner
+                return inner
+            out = []
+            memo[index] = out
+            for ref in value:
+                out.append(resolve(ref))
+            return out
+        memo[index] = value
+        return value
+
+    return resolve(root_index)
+
+
+def _extract_apollo_cache(html):
+    """Return JustWatch's Apollo cache from a title page, old or new format."""
+    if "window.__APOLLO_STATE__=" in html:
+        return _extract_json_var(html, "__APOLLO_STATE__").get("defaultClient", {})
+    return _extract_nuxt_apollo_cache(html)
+
+
 def _resolve_ref(cache, ref):
-    if isinstance(ref, dict) and ref.get("type") == "id":
-        return cache.get(ref["id"], {})
+    if isinstance(ref, dict):
+        if "__ref" in ref:  # Apollo Client 3, on the Nuxt pages
+            return cache.get(ref["__ref"], {})
+        if ref.get("type") == "id":  # older Apollo cache, on the Vue pages
+            return cache.get(ref["id"], {})
     return ref or {}
 
 
@@ -178,7 +277,7 @@ def scrape_title(title, session=None, url=None):
         raise ScrapeError("No JustWatch page found at {}".format(url))
     resp.raise_for_status()
 
-    cache = _extract_json_var(resp.text, "__APOLLO_STATE__").get("defaultClient", {})
+    cache = _extract_apollo_cache(resp.text)
 
     # JustWatch sometimes 301s a guessed slug to its canonical one (e.g.
     # "terrifier-2" -> "terrifier-2-2022"), so match against where we
