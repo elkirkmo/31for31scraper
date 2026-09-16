@@ -262,6 +262,44 @@ class TestScrapeTitle:
         assert rent["currency"] == "USD"
 
     @responses.activate
+    def test_linear_types_map_and_unknown_types_fall_back_to_unknown(self):
+        # JustWatch has monetization types beyond the common ones (e.g.
+        # LINEAR_FLATRATE / LINEAR_FREE for live channels). Every emitted type
+        # must stay within the vocabulary the services table's CHECK allows;
+        # anything unmapped becomes "unknown", never a raw lowercased value.
+        import json
+
+        def offer(oid, mon):
+            return "Offer:{}".format(oid), {
+                "monetizationType": mon, "package": {"type": "id", "id": "Package:p"},
+            }
+
+        cache = dict([
+            ("Url:u1", {"fullPath": "/us/movie/x", "node": {"type": "id", "id": "Movie:m1"}}),
+            ("Movie:m1", {
+                'offers({"filter":{"monetizationTypes":["X"]}})': [
+                    {"type": "id", "id": "Offer:lin_flat"},
+                    {"type": "id", "id": "Offer:lin_free"},
+                    {"type": "id", "id": "Offer:weird"},
+                ],
+            }),
+            offer("lin_flat", "LINEAR_FLATRATE"),
+            offer("lin_free", "LINEAR_FREE"),
+            offer("weird", "SOME_NEW_TYPE"),
+            ("Package:p", {"clearName": "Philo"}),
+        ])
+        html = "<script>window.__APOLLO_STATE__={}</script>".format(
+            json.dumps({"defaultClient": cache})
+        )
+        url = JUSTWATCH_BASE + "x"
+        responses.add(responses.GET, url, body=html, status=200)
+
+        result = scrape_title("X", url=url)
+
+        by_type = {s["type"] for s in result["service"]}
+        assert by_type == {"subscription", "free", "unknown"}  # LINEAR_FLATRATE, LINEAR_FREE, SOME_NEW_TYPE
+
+    @responses.activate
     def test_404_raises_scrape_error(self):
         url = JUSTWATCH_BASE + "not-a-real-movie"
         responses.add(responses.GET, url, status=404)

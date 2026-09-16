@@ -2,12 +2,14 @@ openapi: 3.0.3
 info:
   title: 31for31 JustWatch Scraper API
   description: >
-    Scrapes JustWatch for current streaming offers (free / subscription /
-    rent / buy) for a caller-supplied list of films -- stateless, no film
-    list stored here -- so a frontend backed by its own database can
-    refresh streaming links without hand-checking every title. See the
-    [README](README.md) for how the scraping itself works.
-  version: "1.0.0"
+    REST API in front of the Supabase film catalogue (the source of truth).
+    The `/films` endpoints read and write films and their `justwatch_url`
+    overrides, and refresh each film's current streaming offers (free /
+    subscription / rent / buy) by scraping JustWatch into Supabase. The
+    `/api/scrape` endpoints are a stateless, ad-hoc scrape that persists
+    nothing -- handy as a dry run. See the [README](README.md) for how the
+    scraping itself works.
+  version: "1.1.0"
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
@@ -20,8 +22,10 @@ servers:
 tags:
   - name: Health
     description: Liveness check
+  - name: Films
+    description: The Supabase-backed film catalogue and offer refresh
   - name: Scrape
-    description: JustWatch scraping
+    description: Ad-hoc JustWatch scraping (stateless, persists nothing)
 
 paths:
   /api/health:
@@ -210,6 +214,338 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /films:
+    get:
+      operationId: listFilms
+      tags: [Films]
+      summary: List the film catalogue, each film with its stored offers
+      description: >
+        Public read (no auth). Returns every film with its nested `services`
+        (offers), ordered by year then the catalogue's own sort order. This is
+        the Supabase-backed stored state, not a live scrape -- offers are
+        whatever the last refresh persisted.
+      security: []
+      parameters:
+        - name: year
+          in: query
+          required: false
+          description: Restrict to a single release year.
+          schema:
+            type: integer
+          example: 2024
+      responses:
+        "200":
+          description: The catalogue (optionally filtered by year).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Film"
+        "400":
+          description: "`year` was provided but isn't an integer."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Supabase isn't configured on the server (missing URL / service-role key).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Supabase couldn't be reached or returned an error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createFilm
+      tags: [Films]
+      summary: Add a film to the catalogue
+      description: >
+        Admin only. Creates a film row; offers are populated separately via
+        refresh. `year`+`title` must be unique -- a duplicate returns 409.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FilmCreate"
+      responses:
+        "201":
+          description: The created film.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Film"
+        "400":
+          description: >
+            Missing or invalid fields (year, date, title are required;
+            justwatch_url, if given, must be a JustWatch URL).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or incorrect `X-API-Key` header.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: A film with this (year, title) already exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: The server has no `ADMIN_API_KEY`, or Supabase isn't configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Supabase couldn't be reached or returned an error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /films/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        example: 20
+    get:
+      operationId: getFilm
+      tags: [Films]
+      summary: Get one film with its offers
+      security: []
+      responses:
+        "200":
+          description: The film with its nested offers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Film"
+        "404":
+          description: No film with that id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Supabase isn't configured on the server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Supabase couldn't be reached or returned an error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateFilm
+      tags: [Films]
+      summary: Update a film's fields (including the justwatch_url override)
+      description: >
+        Admin only. Send any subset of the writable fields. Set `justwatch_url`
+        to a JustWatch URL to override slug-guessing (the "Override"), or to
+        null to clear it. The change takes effect on the next refresh.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FilmPatch"
+            example:
+              justwatch_url: "https://www.justwatch.com/us/movie/le-cercle"
+      responses:
+        "200":
+          description: The updated film.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Film"
+        "400":
+          description: Empty body, no updatable fields, or an invalid field value.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or incorrect `X-API-Key` header.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No film with that id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: The server has no `ADMIN_API_KEY`, or Supabase isn't configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Supabase couldn't be reached or returned an error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteFilm
+      tags: [Films]
+      summary: Delete a film (its offers cascade)
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          description: Missing or incorrect `X-API-Key` header.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No film with that id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: The server has no `ADMIN_API_KEY`, or Supabase isn't configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Supabase couldn't be reached or returned an error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /films/{id}/refresh:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        example: 20
+    post:
+      operationId: refreshFilm
+      tags: [Films]
+      summary: Re-scrape one film and replace its stored offers
+      description: >
+        Admin only. Scrapes the film's JustWatch page -- using its stored
+        `justwatch_url` override if set, else the slug guessed from the title
+        -- and replaces that film's offers in Supabase. On a scrape/network
+        failure the existing offers are left untouched (a transient upstream
+        failure never wipes good data) and the endpoint returns 502.
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Offers refreshed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefreshResult"
+              example:
+                film_id: 20
+                title: "The Ring"
+                url: "https://www.justwatch.com/us/movie/le-cercle"
+                services_updated: 16
+                refreshed: true
+        "401":
+          description: Missing or incorrect `X-API-Key` header.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No film with that id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: The server has no `ADMIN_API_KEY`, or Supabase isn't configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: >
+            The scrape failed (JustWatch timeout / 404 / parse error) or
+            Supabase errored. Existing offers are left unchanged.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefreshResult"
+              example:
+                film_id: 20
+                title: "The Ring"
+                error: "No JustWatch page found at https://www.justwatch.com/us/movie/the-ring"
+                refreshed: false
+                note: "existing offers left unchanged"
+
+  /films/refresh:
+    post:
+      operationId: refreshAllFilms
+      tags: [Films]
+      summary: Re-scrape every film and refresh its offers
+      description: >
+        Admin only. The periodic job (e.g. a scheduled Vercel Cron): scrapes
+        all films with bounded concurrency and replaces each film's offers.
+        One film's scrape failure doesn't abort the batch or wipe that film's
+        offers -- it's reported inline with `refreshed: false`.
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Per-film refresh summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefreshBatchResult"
+        "401":
+          description: Missing or incorrect `X-API-Key` header.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: The server has no `ADMIN_API_KEY`, or Supabase isn't configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Supabase couldn't be reached, or listing the catalogue failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -316,3 +652,133 @@ components:
       properties:
         error:
           type: string
+
+    Film:
+      type: object
+      description: A film in the catalogue, with its currently stored offers.
+      required: [id, year, date, title, services]
+      properties:
+        id:
+          type: integer
+          example: 20
+        year:
+          type: integer
+          example: 2024
+        sort_order:
+          type: integer
+          description: The catalogue's display order within a year.
+          example: 19
+        date:
+          type: string
+          description: Display date string as shown on the site.
+          example: "10/20/2024"
+        title:
+          type: string
+          example: "The Ring"
+        justwatch_url:
+          type: string
+          format: uri
+          nullable: true
+          description: >
+            The "Override" -- scrape this exact JustWatch URL instead of
+            guessing the slug from the title. Null means guess from the title.
+          example: "https://www.justwatch.com/us/movie/le-cercle"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+          description: Bumped on every update and refresh (doubles as "last refreshed").
+        services:
+          type: array
+          description: >
+            The film's stored offers. Same meaningful fields as a scrape's
+            `Offer`, plus the row's own `id`/`film_id`/timestamps.
+          items:
+            $ref: "#/components/schemas/Offer"
+
+    FilmCreate:
+      type: object
+      description: A new film to add to the catalogue (POST /films).
+      required: [year, date, title]
+      properties:
+        year:
+          type: integer
+          example: 2024
+        date:
+          type: string
+          example: "10/20/2024"
+        title:
+          type: string
+          example: "The Ring"
+        justwatch_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Optional override; must be an `https://www.justwatch.com/...` URL.
+          example: "https://www.justwatch.com/us/movie/le-cercle"
+        sort_order:
+          type: integer
+          example: 19
+
+    FilmPatch:
+      type: object
+      description: Any subset of a film's writable fields (at least one) (PATCH /films/{id}).
+      minProperties: 1
+      properties:
+        year:
+          type: integer
+        date:
+          type: string
+        title:
+          type: string
+        justwatch_url:
+          type: string
+          format: uri
+          nullable: true
+          description: A JustWatch URL to override slug-guessing, or null to clear the override.
+        sort_order:
+          type: integer
+
+    RefreshResult:
+      type: object
+      description: Outcome of refreshing a single film's offers.
+      required: [film_id, title, refreshed]
+      properties:
+        film_id:
+          type: integer
+        title:
+          type: string
+        refreshed:
+          type: boolean
+          description: True if offers were re-scraped and stored; false if the scrape failed.
+        url:
+          type: string
+          format: uri
+          description: The JustWatch URL actually scraped. Present only on success.
+        services_updated:
+          type: integer
+          description: Number of offers stored. Present only on success.
+        error:
+          type: string
+          description: Present only on failure.
+        note:
+          type: string
+          description: Present on failure -- confirms existing offers were left unchanged.
+
+    RefreshBatchResult:
+      type: object
+      description: Summary of a full-catalogue refresh (POST /films/refresh).
+      required: [films, refreshed, results]
+      properties:
+        films:
+          type: integer
+          description: Total films processed.
+        refreshed:
+          type: integer
+          description: How many were successfully refreshed.
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/RefreshResult"

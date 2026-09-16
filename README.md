@@ -1,11 +1,13 @@
 # 31for31scraper
 
-A small, stateless Flask service that scrapes [JustWatch](https://www.justwatch.com)
-for current streaming offers (free / subscription / rent / buy, with
-prices and direct links) behind [31for31](https://31for31.vercel.app/).
-It stores no film list of its own — a caller supplies the films to scrape
-on every request, and gets current offers back. The frontend owns the
-actual film data (title / date / `justwatch_url`) in its own database.
+A small Flask service behind [31for31](https://31for31.vercel.app/) that is
+the REST API in front of the film catalogue. It manages films and their
+`justwatch_url` overrides in a [Supabase](https://supabase.com) database (the
+source of truth) and refreshes each film's current streaming offers (free /
+subscription / rent / buy, with prices and direct links) by scraping
+[JustWatch](https://www.justwatch.com). The `/films` endpoints read and write
+Supabase; a separate stateless `/api/scrape` endpoint scrapes ad hoc without
+persisting anything (handy as a dry run).
 
 ## How it works
 
@@ -34,11 +36,13 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `.env` and set `ADMIN_API_KEY` to a random secret, e.g.:
+Edit `.env` and set:
 
-```bash
-openssl rand -hex 32
-```
+- `ADMIN_API_KEY` — a random secret guarding the write/refresh endpoints,
+  e.g. `openssl rand -hex 32`.
+- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` — the Supabase project the
+  `/films` endpoints read and write. The service-role key bypasses row-level
+  security, so it's server-only; never expose it to a browser.
 
 ## Running locally
 
@@ -81,6 +85,31 @@ https://31for31scraper.vercel.app/) for an interactive Swagger UI, served
 straight from [`openapi.yaml`](openapi.yaml) (OpenAPI 3.0) — no auth
 required. The raw spec is also served as-is at `/openapi.yaml` if you'd
 rather point another tool (Postman, Redoc, etc.) at it directly.
+
+### Film catalogue: `/films`
+
+The primary API, backed by Supabase. Reads are public; writes and refreshes
+require the `X-API-Key` header.
+
+- **`GET /films`** (`?year=`) — every film with its stored offers.
+- **`GET /films/{id}`** — one film with its offers.
+- **`POST /films`** — add a film (`{year, date, title, justwatch_url?}`).
+- **`PATCH /films/{id}`** — update fields, including `justwatch_url` (the
+  "Override"); set it to `null` to clear.
+- **`DELETE /films/{id}`** — delete a film (its offers cascade).
+- **`POST /films/{id}/refresh`** — re-scrape one film and replace its stored
+  offers. A failed scrape leaves the existing offers untouched (a transient
+  JustWatch failure never wipes good data).
+- **`POST /films/refresh`** — re-scrape the whole catalogue (the periodic
+  job). One film failing is reported inline, not fatal.
+
+```bash
+# set The Ring's override, then refresh its offers from the 2002 film's page
+curl -X PATCH -H "X-API-Key: $ADMIN_API_KEY" -H "Content-Type: application/json" \
+  -d '{"justwatch_url": "https://www.justwatch.com/us/movie/le-cercle"}' \
+  http://127.0.0.1:5000/films/20
+curl -X POST -H "X-API-Key: $ADMIN_API_KEY" http://127.0.0.1:5000/films/20/refresh
+```
 
 ### `GET /api/health`
 
@@ -178,9 +207,10 @@ lives.
 
 Last audited 2026-08-08 against SQL injection, brute force, SSRF, path
 traversal, command injection, CSRF, XSS, mass assignment, unsafe
-deserialization, ReDoS, and dependency pinning. (This service has since
-gone fully stateless -- see below -- but the findings below still apply
-to what remains.)
+deserialization, ReDoS, and dependency pinning. The Supabase-backed `/films`
+API postdates that audit; the notes below cover its main surface
+(service-role key handling, mass-assignment allow-listing, PostgREST instead
+of raw SQL), but it hasn't had a full dedicated audit pass.
 
 - **`/api/scrape` requires `ADMIN_API_KEY`** via the `X-API-Key` header,
   compared with `hmac.compare_digest` (constant-time — plain `!=` leaks
@@ -191,12 +221,17 @@ to what remains.)
   caller make the server fetch arbitrary URLs on its behalf — an open
   SSRF proxy if the API key ever leaked, e.g. to probe Vercel's internal
   network or cloud metadata endpoints.
-- **No SQL database, and nothing persisted at all** — this service reads
-  JustWatch and returns JSON; it doesn't store anything. SQL injection
-  doesn't apply here. (The frontend's own Supabase database is out of
-  scope for this repo, but the same principle holds there: use
-  `supabase-py`'s query builder or parameterized queries, never
-  hand-built SQL strings.)
+- **Supabase access goes through PostgREST, not hand-built SQL** — the
+  `/films` endpoints talk to Supabase over its REST API (`supabase_store.py`)
+  with parameterized filters, so there's no SQL string for injection to
+  target. The **service-role key bypasses row-level security and is
+  server-only** — read from the environment, never returned to a client.
+- **Writable fields are allow-listed** (`FILM_WRITABLE_FIELDS` in
+  `supabase_store.py`) — `POST`/`PATCH /films` only forward `year`, `date`,
+  `title`, `justwatch_url`, `sort_order`, so a caller can't set `id`,
+  timestamps, or any other column (mass-assignment guard). `justwatch_url`
+  is validated with the same `is_justwatch_url()` SSRF check as the scrape
+  endpoints.
 - **`requirements.txt`/`requirements-dev.txt` are pinned to exact
   versions**, not left open-ended, so deploys are reproducible and don't
   silently pick up a new (possibly broken or vulnerable) release.

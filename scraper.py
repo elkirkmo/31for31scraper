@@ -36,13 +36,20 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
 
-# JustWatch's monetizationType -> the bucket we report it under.
+# JustWatch's monetizationType -> the bucket we report it under. This is the
+# full set JustWatch uses; the buckets match the services table's CHECK
+# constraint (free/subscription/rent/buy/cinema/unknown), so anything not
+# listed here must fall back to "unknown" rather than a raw lowercased value
+# the DB would reject. LINEAR_* are live/linear channels: free ad-supported
+# ones bucket as free, subscription-included ones as subscription.
 MONETIZATION_TYPE_MAP = {
     "FREE": "free",
     "ADS": "free",
     "FAST": "free",
+    "LINEAR_FREE": "free",
     "FLATRATE": "subscription",
     "FLATRATE_AND_BUY": "subscription",
+    "LINEAR_FLATRATE": "subscription",
     "RENT": "rent",
     "BUY": "buy",
     "CINEMA": "cinema",
@@ -303,7 +310,7 @@ def scrape_title(title, session=None, url=None):
         monetization = offer.get("monetizationType")
         services.append({
             "name": package.get("clearName"),
-            "type": MONETIZATION_TYPE_MAP.get(monetization, (monetization or "unknown").lower()),
+            "type": MONETIZATION_TYPE_MAP.get(monetization, "unknown"),
             "price": offer.get("retailPriceValue"),
             "currency": offer.get("currency"),
             "link": offer.get("standardWebURL") or offer.get("preAffiliatedStandardWebURL"),
