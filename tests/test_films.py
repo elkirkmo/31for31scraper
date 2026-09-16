@@ -1,5 +1,6 @@
 import json
 
+import pytest
 import responses
 
 from helpers import load_fixture
@@ -67,6 +68,63 @@ class TestListFilms:
         resp = client.get("/films", headers=auth_headers)
         assert resp.status_code == 500
         assert "SUPABASE" in resp.get_json()["error"]
+
+
+class TestReadKeyTier:
+    """A read-only key tier exists so catalogue access can eventually be
+    granted to a third-party app without granting the ability to change it.
+
+    It is shut by default: with no READ_API_KEY configured, reads accept the
+    admin key alone, which is the current production posture. These tests
+    pin both halves -- that the tier works, and that it stays closed unless
+    deliberately opened.
+    """
+
+    @pytest.fixture
+    def read_key(self, monkeypatch):
+        monkeypatch.setenv("READ_API_KEY", "read-only-key")
+        return {"X-API-Key": "read-only-key"}
+
+    @responses.activate
+    def test_read_key_can_list_films(self, client, api_key, read_key, supabase_env):
+        responses.add(responses.GET, REST + "films", json=[{"id": 1, "title": "A"}], status=200)
+        resp = client.get("/films", headers=read_key)
+        assert resp.status_code == 200
+
+    @responses.activate
+    def test_read_key_can_get_one_film(self, client, api_key, read_key, supabase_env):
+        responses.add(responses.GET, REST + "films", json=[{"id": 1, "title": "A"}], status=200)
+        resp = client.get("/films/1", headers=read_key)
+        assert resp.status_code == 200
+
+    def test_read_key_cannot_write_or_refresh(self, client, api_key, read_key, supabase_env):
+        # The whole point of the tier. No PostgREST responses are registered,
+        # so anything that got past auth would raise rather than pass quietly.
+        assert client.post("/films", json={"year": 2024, "date": "10/1/2024", "title": "X"},
+                           headers=read_key).status_code == 401
+        assert client.patch("/films/1", json={"title": "X"}, headers=read_key).status_code == 401
+        assert client.delete("/films/1", headers=read_key).status_code == 401
+        assert client.post("/films/1/refresh", headers=read_key).status_code == 401
+        assert client.post("/films/refresh", headers=read_key).status_code == 401
+        assert client.get("/api/scrape?title=X", headers=read_key).status_code == 401
+
+    def test_door_is_shut_when_no_read_key_is_configured(self, client, api_key, monkeypatch, supabase_env):
+        # Default posture: no READ_API_KEY set, so no third party can read.
+        monkeypatch.delenv("READ_API_KEY", raising=False)
+        assert client.get("/films", headers={"X-API-Key": "read-only-key"}).status_code == 401
+
+    def test_unset_read_key_never_matches_an_absent_header(self, client, api_key, monkeypatch, supabase_env):
+        # Guard against the empty-string-matches-empty-string failure mode.
+        monkeypatch.delenv("READ_API_KEY", raising=False)
+        assert client.get("/films").status_code == 401
+        monkeypatch.setenv("READ_API_KEY", "")
+        assert client.get("/films").status_code == 401
+        assert client.get("/films", headers={"X-API-Key": ""}).status_code == 401
+
+    @responses.activate
+    def test_admin_key_still_works_on_reads(self, client, auth_headers, read_key, supabase_env):
+        responses.add(responses.GET, REST + "films", json=[], status=200)
+        assert client.get("/films", headers=auth_headers).status_code == 200
 
 
 class TestGetFilm:

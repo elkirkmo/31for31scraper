@@ -43,6 +43,8 @@ Edit `.env` and set:
 - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` — the Supabase project the
   `/films` endpoints read and write. The service-role key bypasses row-level
   security, so it's server-only; never expose it to a browser.
+- `READ_API_KEY` — optional, and unset by default. A second key that
+  authorises the read endpoints only. See the API section below.
 
 ## Running locally
 
@@ -92,6 +94,15 @@ The primary API, backed by Supabase. Every endpoint requires the
 `X-API-Key` header — reads included. The intended caller is a server-side
 consumer holding the key; there are no CORS headers, so a browser can't
 call these directly in any case.
+
+Two key tiers. `ADMIN_API_KEY` authorises everything. `READ_API_KEY`
+authorises the two read endpoints only, so catalogue access can be given to
+someone building their own app without giving them the ability to change
+anything. It's optional and **unset by default** — with no read key
+configured, reads accept the admin key alone, which means no third party can
+read anything. The tier exists so that opening that door later is a config
+change rather than a redesign; a browser-based third-party client would also
+need CORS headers, which this service deliberately doesn't send.
 
 - **`GET /films`** (`?year=`) — every film with its stored offers.
 - **`GET /films/{id}`** — one film with its offers.
@@ -218,9 +229,13 @@ API postdates that audit; the notes below cover its main surface
 (service-role key handling, mass-assignment allow-listing, PostgREST instead
 of raw SQL), but it hasn't had a full dedicated audit pass.
 
-- **`/api/scrape` requires `ADMIN_API_KEY`** via the `X-API-Key` header,
-  compared with `hmac.compare_digest` (constant-time — plain `!=` leaks
-  timing information proportional to how many leading characters match).
+- **Every endpoint except `/`, `/openapi.yaml` and `/api/health` requires a
+  key** via the `X-API-Key` header, compared with `hmac.compare_digest`
+  (constant-time — plain `!=` leaks timing information proportional to how
+  many leading characters match). Writes and refreshes take `ADMIN_API_KEY`
+  only; reads also accept the optional `READ_API_KEY`. An unset `READ_API_KEY`
+  is never compared, so an absent header can't match an empty configured
+  value.
 - **`url` (GET) and `justwatch_url` (POST body) are restricted to
   `https://www.justwatch.com/...`** (`is_justwatch_url()` in
   `scraper.py`). Without this, either one would let an authenticated

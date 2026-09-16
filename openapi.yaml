@@ -226,9 +226,10 @@ paths:
         refresh persisted.
 
 
-        Requires `X-API-Key`, like the writes. The intended caller is a
-        server-side consumer holding the key; there are no CORS headers here,
-        so a browser can't call this directly in any case.
+        Requires `X-API-Key`, like the writes -- but at the read tier, so
+        `READ_API_KEY` is accepted here as well as `ADMIN_API_KEY`. The
+        intended caller is a server-side consumer holding a key; there are no
+        CORS headers here, so a browser can't call this directly in any case.
       security:
         - ApiKeyAuth: []
       parameters:
@@ -582,7 +583,21 @@ components:
       type: apiKey
       in: header
       name: X-API-Key
-      description: Must match the server's `ADMIN_API_KEY` environment variable.
+      description: >
+        Must match the server's `ADMIN_API_KEY` environment variable, which
+        authorises everything including writes and refreshes.
+
+
+        The two read endpoints (`GET /films`, `GET /films/{id}`) additionally
+        accept a read-only key, `READ_API_KEY`, so catalogue access can be
+        granted without granting the ability to change anything. That key is
+        optional and unset by default: with none configured, reads accept the
+        admin key alone. Paste whichever key you hold into Authorize — the
+        header is the same either way.
+
+
+        Note that a browser-based third-party client would also need CORS
+        headers, which this service deliberately does not send.
 
   schemas:
     HealthResponse:

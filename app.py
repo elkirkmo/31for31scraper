@@ -26,13 +26,40 @@ def openapi_spec():
     return send_file(OPENAPI_FILE, mimetype="application/yaml")
 
 
-def _check_auth():
-    api_key = os.environ.get("ADMIN_API_KEY")
-    if not api_key:
+def _check_auth(allow_read_key=False):
+    """Authorise a request by its X-API-Key header. Returns an error response,
+    or None if the caller may proceed.
+
+    Two tiers, so that read access can eventually be granted to someone
+    without also handing them the ability to delete the catalogue:
+
+      ADMIN_API_KEY  -- everything, including writes and refreshes.
+      READ_API_KEY   -- the read endpoints only (allow_read_key=True), and
+                        only if the server has one configured.
+
+    READ_API_KEY is deliberately optional and unset by default: with no read
+    key, reads accept the admin key alone, which is today's behaviour and
+    means no third party can read anything. The tier exists so that opening
+    that door later is a config change rather than a redesign. Note that a
+    browser-based third-party app would also need CORS headers, which this
+    service deliberately does not send.
+    """
+    admin_key = os.environ.get("ADMIN_API_KEY")
+    if not admin_key:
         return jsonify({"error": "ADMIN_API_KEY is not configured on the server"}), 500
-    if not hmac.compare_digest(request.headers.get("X-API-Key", ""), api_key):
-        return jsonify({"error": "Unauthorized"}), 401
-    return None
+
+    presented = request.headers.get("X-API-Key", "")
+    if hmac.compare_digest(presented, admin_key):
+        return None
+
+    if allow_read_key:
+        read_key = os.environ.get("READ_API_KEY")
+        # compare_digest only on a configured key -- an unset READ_API_KEY
+        # must never match an absent header.
+        if read_key and hmac.compare_digest(presented, read_key):
+            return None
+
+    return jsonify({"error": "Unauthorized"}), 401
 
 
 def _store_error_response(exc):
@@ -131,11 +158,11 @@ def scrape_batch():
 def list_films():
     """The film catalogue, each film with its nested offers (services).
 
-    Keyed like the writes. The only client is the frontend's server-side
-    loader, which holds the key; nothing calls this from a browser (there are
-    no CORS headers here, so nothing could).
+    Keyed, but at the read tier: accepts READ_API_KEY as well as the admin
+    key, so a consumer can be given the catalogue without being given the
+    ability to change it. See _check_auth.
     """
-    auth_error = _check_auth()
+    auth_error = _check_auth(allow_read_key=True)
     if auth_error:
         return auth_error
 
@@ -153,8 +180,8 @@ def list_films():
 
 @app.route("/films/<int:film_id>", methods=["GET"])
 def get_film(film_id):
-    """One film with its nested offers. Keyed, as GET /films is."""
-    auth_error = _check_auth()
+    """One film with its nested offers. Read tier, as GET /films is."""
+    auth_error = _check_auth(allow_read_key=True)
     if auth_error:
         return auth_error
 
