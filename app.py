@@ -129,7 +129,16 @@ def scrape_batch():
 
 @app.route("/films", methods=["GET"])
 def list_films():
-    """Public: the film catalogue, each film with its nested offers (services)."""
+    """The film catalogue, each film with its nested offers (services).
+
+    Keyed like the writes. The only client is the frontend's server-side
+    loader, which holds the key; nothing calls this from a browser (there are
+    no CORS headers here, so nothing could).
+    """
+    auth_error = _check_auth()
+    if auth_error:
+        return auth_error
+
     year = request.args.get("year")
     if year is not None:
         try:
@@ -144,7 +153,11 @@ def list_films():
 
 @app.route("/films/<int:film_id>", methods=["GET"])
 def get_film(film_id):
-    """Public: one film with its nested offers."""
+    """One film with its nested offers. Keyed, as GET /films is."""
+    auth_error = _check_auth()
+    if auth_error:
+        return auth_error
+
     try:
         film = store.get_film(film_id)
     except StoreError as exc:
@@ -215,6 +228,12 @@ def delete_film(film_id):
     return "", 204
 
 
+def _scrape_failure_entry(film, result):
+    """One film's inline failure record in a batch refresh summary."""
+    return {"film_id": film["id"], "title": film["title"],
+            "error": result["error"], "refreshed": False}
+
+
 def _refresh_film(film):
     """Scrape one film and replace its services -- only on a successful scrape.
 
@@ -271,11 +290,34 @@ def refresh_all_films():
         films = store.list_films()
         pairs = [(f["title"], f.get("justwatch_url")) for f in films]
         results = scrape_titles(pairs)
+
+        # Scrape everything and decide whether the run is trustworthy BEFORE
+        # writing anything -- the guard below is worthless if half the
+        # catalogue has already been overwritten by the time it runs.
+        scraped = [(film, result["service"])
+                   for film, result in zip(films, results) if "error" not in result]
+
+        # A film here and there genuinely streams nowhere. Every single film
+        # streaming nowhere is a broken scrape, not a catalogue that emptied
+        # overnight -- and applying it would erase the one thing the site is
+        # for. Refuse the whole run rather than write a single row.
+        if scraped and not any(offers for _, offers in scraped):
+            return jsonify({
+                "films": len(films),
+                "refreshed": 0,
+                "error": "Refused: the scrape found no streaming offers for any of the {} "
+                         "films it could read, which means the scrape failed rather than "
+                         "every film leaving every service. Nothing was changed.".format(len(scraped)),
+                # The films that failed outright are the diagnostic an admin
+                # needs at exactly this moment, so don't swallow them.
+                "results": [_scrape_failure_entry(f, r)
+                            for f, r in zip(films, results) if "error" in r],
+            }), 502
+
         summary = []
         for film, result in zip(films, results):
             if "error" in result:
-                summary.append({"film_id": film["id"], "title": film["title"],
-                                "error": result["error"], "refreshed": False})
+                summary.append(_scrape_failure_entry(film, result))
                 continue
             count = store.replace_services(film["id"], result["service"])
             store.update_film(film["id"], {})

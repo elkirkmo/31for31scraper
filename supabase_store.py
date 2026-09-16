@@ -14,6 +14,7 @@ of calls. Schema (see the frontend repo's supabase/migrations):
 """
 import os
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 import requests
 
@@ -25,6 +26,9 @@ FILM_WRITABLE_FIELDS = ("year", "date", "title", "justwatch_url", "sort_order")
 
 # The offer fields scrape_title() emits, which map 1:1 onto services columns.
 SERVICE_FIELDS = ("name", "type", "price", "currency", "link", "icon")
+
+# Of those, the ones rendered as URLs in the browser -- sanitised on write.
+SERVICE_URL_FIELDS = ("link", "icon")
 
 
 class StoreError(Exception):
@@ -86,6 +90,27 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
+def _https_url_or_none(value):
+    """Keep a plain https URL, drop anything else.
+
+    A service's `link` is rendered as an <a href> and `icon` as an <img src>
+    for every visitor to the site, so neither can be trusted verbatim just
+    because it came off a JustWatch page -- a `javascript:` URI there would be
+    clickable XSS on the homepage. https-only rather than http too: every real
+    offer already uses https, so there's nothing legitimate to accommodate and
+    it avoids mixed content on an https site.
+
+    This guard used to live in the frontend (applyOffers.ts) and moved here
+    when offer writes did; it is now the only thing enforcing it.
+    """
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        return value if urlparse(value).scheme == "https" else None
+    except ValueError:
+        return None
+
+
 def list_films(year=None):
     """All films, each with its nested `services`, ordered as the site shows them."""
     params = {"select": "*,services(*)", "order": "year.asc,sort_order.asc"}
@@ -103,8 +128,28 @@ def get_film(film_id):
     return rows[0] if rows else None
 
 
+def _next_sort_order(year):
+    """One past the highest sort_order in `year` (0 if the year is empty).
+
+    Films are displayed ordered by (year, sort_order), so a new film has to
+    land at the end of its year. The column defaults to 0 in the schema, which
+    would file every new film alongside whatever opened that year instead.
+    Computed here rather than by the caller so clients stay dumb -- they POST
+    a film and get the right position without a read-modify-write of their own.
+    """
+    rows = _request(
+        "GET", "films",
+        params={"select": "sort_order", "year": "eq.{}".format(year),
+                "order": "sort_order.desc", "limit": "1"},
+    )
+    return (rows[0]["sort_order"] + 1) if rows else 0
+
+
 def create_film(fields):
     payload = {k: fields[k] for k in FILM_WRITABLE_FIELDS if k in fields}
+    # An explicit sort_order still wins -- this only fills in the common case.
+    if "sort_order" not in payload:
+        payload["sort_order"] = _next_sort_order(payload["year"])
     rows = _request("POST", "films", json=payload, prefer="return=representation")
     return rows[0] if rows else None
 
@@ -152,7 +197,9 @@ def replace_services(film_id, services):
     old_ids = [row["id"] for row in existing]
 
     rows = [
-        dict({"film_id": film_id}, **{k: s.get(k) for k in SERVICE_FIELDS})
+        dict({"film_id": film_id},
+             **{k: (_https_url_or_none(s.get(k)) if k in SERVICE_URL_FIELDS else s.get(k))
+                for k in SERVICE_FIELDS})
         for s in services
     ]
     if rows:

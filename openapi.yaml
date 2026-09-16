@@ -220,11 +220,17 @@ paths:
       tags: [Films]
       summary: List the film catalogue, each film with its stored offers
       description: >
-        Public read (no auth). Returns every film with its nested `services`
-        (offers), ordered by year then the catalogue's own sort order. This is
-        the Supabase-backed stored state, not a live scrape -- offers are
-        whatever the last refresh persisted.
-      security: []
+        Returns every film with its nested `services` (offers), ordered by
+        year then the catalogue's own sort order. This is the Supabase-backed
+        stored state, not a live scrape -- offers are whatever the last
+        refresh persisted.
+
+
+        Requires `X-API-Key`, like the writes. The intended caller is a
+        server-side consumer holding the key; there are no CORS headers here,
+        so a browser can't call this directly in any case.
+      security:
+        - ApiKeyAuth: []
       parameters:
         - name: year
           in: query
@@ -244,6 +250,12 @@ paths:
                   $ref: "#/components/schemas/Film"
         "400":
           description: "`year` was provided but isn't an integer."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or incorrect `X-API-Key` header.
           content:
             application/json:
               schema:
@@ -327,7 +339,8 @@ paths:
       operationId: getFilm
       tags: [Films]
       summary: Get one film with its offers
-      security: []
+      security:
+        - ApiKeyAuth: []
       responses:
         "200":
           description: The film with its nested offers.
@@ -335,6 +348,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Film"
+        "401":
+          description: Missing or incorrect `X-API-Key` header.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: No film with that id.
           content:
@@ -518,6 +537,14 @@ paths:
         all films with bounded concurrency and replaces each film's offers.
         One film's scrape failure doesn't abort the batch or wipe that film's
         offers -- it's reported inline with `refreshed: false`.
+
+
+        Guarded against a broken scrape: if every film that could be read came
+        back with zero offers, the whole run is refused with `502` and nothing
+        is written. A handful of films genuinely stream nowhere, but all of
+        them doing so at once means the scrape failed, not that the catalogue
+        emptied overnight. Films that failed to scrape outright don't count
+        toward this -- they were never read, so there's nothing to refuse.
       security:
         - ApiKeyAuth: []
       responses:
@@ -540,7 +567,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "502":
-          description: Supabase couldn't be reached, or listing the catalogue failed.
+          description: >
+            Supabase couldn't be reached, listing the catalogue failed, or the
+            run was refused because every readable film scraped empty. In the
+            refusal case nothing was written and `refreshed` is `0`.
           content:
             application/json:
               schema:
@@ -720,6 +750,12 @@ components:
           example: "https://www.justwatch.com/us/movie/le-cercle"
         sort_order:
           type: integer
+          description: >
+            Position within the year. Omit it and the film is appended to the
+            end of its year (one past that year's highest), which is almost
+            always what you want -- the column's own default of 0 would file
+            a new film alongside whatever opened that year. Pass it explicitly
+            only to insert at a specific position.
           example: 19
 
     FilmPatch:

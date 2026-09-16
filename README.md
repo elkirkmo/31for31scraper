@@ -88,12 +88,15 @@ rather point another tool (Postman, Redoc, etc.) at it directly.
 
 ### Film catalogue: `/films`
 
-The primary API, backed by Supabase. Reads are public; writes and refreshes
-require the `X-API-Key` header.
+The primary API, backed by Supabase. Every endpoint requires the
+`X-API-Key` header — reads included. The intended caller is a server-side
+consumer holding the key; there are no CORS headers, so a browser can't
+call these directly in any case.
 
 - **`GET /films`** (`?year=`) — every film with its stored offers.
 - **`GET /films/{id}`** — one film with its offers.
 - **`POST /films`** — add a film (`{year, date, title, justwatch_url?}`).
+  `sort_order` is optional and defaults to the end of that year.
 - **`PATCH /films/{id}`** — update fields, including `justwatch_url` (the
   "Override"); set it to `null` to clear.
 - **`DELETE /films/{id}`** — delete a film (its offers cascade).
@@ -101,7 +104,10 @@ require the `X-API-Key` header.
   offers. A failed scrape leaves the existing offers untouched (a transient
   JustWatch failure never wipes good data).
 - **`POST /films/refresh`** — re-scrape the whole catalogue (the periodic
-  job). One film failing is reported inline, not fatal.
+  job). One film failing is reported inline, not fatal. If *every* film it
+  could read came back with zero offers, the run is refused with `502` and
+  nothing is written — that's a broken scrape, not a catalogue that emptied
+  overnight, and applying it would erase the one thing the site is for.
 
 ```bash
 # set The Ring's override, then refresh its offers from the 2002 film's page
@@ -232,6 +238,14 @@ of raw SQL), but it hasn't had a full dedicated audit pass.
   timestamps, or any other column (mass-assignment guard). `justwatch_url`
   is validated with the same `is_justwatch_url()` SSRF check as the scrape
   endpoints.
+- **Stored offer URLs are sanitised to https on write**
+  (`_https_url_or_none()` in `supabase_store.py`). A service's `link` is
+  rendered as an `<a href>` and its `icon` as an `<img src>` for every
+  visitor to the site, so neither is trusted verbatim just because it came
+  off a JustWatch page — a `javascript:` URI there would be clickable XSS on
+  the homepage. This guard previously lived in the frontend; it lives here
+  now, and here only, so a consumer that renders what this API returns no
+  longer has to re-check it.
 - **`requirements.txt`/`requirements-dev.txt` are pinned to exact
   versions**, not left open-ended, so deploys are reproducible and don't
   silently pick up a new (possibly broken or vulnerable) release.
