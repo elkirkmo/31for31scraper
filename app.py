@@ -26,13 +26,40 @@ def openapi_spec():
     return send_file(OPENAPI_FILE, mimetype="application/yaml")
 
 
-def _check_auth():
-    api_key = os.environ.get("ADMIN_API_KEY")
-    if not api_key:
+def _check_auth(allow_read_key=False):
+    """Authorise a request by its X-API-Key header. Returns an error response,
+    or None if the caller may proceed.
+
+    Two tiers, so that read access can eventually be granted to someone
+    without also handing them the ability to delete the catalogue:
+
+      ADMIN_API_KEY  -- everything, including writes and refreshes.
+      READ_API_KEY   -- the read endpoints only (allow_read_key=True), and
+                        only if the server has one configured.
+
+    READ_API_KEY is deliberately optional and unset by default: with no read
+    key, reads accept the admin key alone, which is today's behaviour and
+    means no third party can read anything. The tier exists so that opening
+    that door later is a config change rather than a redesign. Note that a
+    browser-based third-party app would also need CORS headers, which this
+    service deliberately does not send.
+    """
+    admin_key = os.environ.get("ADMIN_API_KEY")
+    if not admin_key:
         return jsonify({"error": "ADMIN_API_KEY is not configured on the server"}), 500
-    if not hmac.compare_digest(request.headers.get("X-API-Key", ""), api_key):
-        return jsonify({"error": "Unauthorized"}), 401
-    return None
+
+    presented = request.headers.get("X-API-Key", "")
+    if hmac.compare_digest(presented, admin_key):
+        return None
+
+    if allow_read_key:
+        read_key = os.environ.get("READ_API_KEY")
+        # compare_digest only on a configured key -- an unset READ_API_KEY
+        # must never match an absent header.
+        if read_key and hmac.compare_digest(presented, read_key):
+            return None
+
+    return jsonify({"error": "Unauthorized"}), 401
 
 
 def _store_error_response(exc):
@@ -129,7 +156,16 @@ def scrape_batch():
 
 @app.route("/films", methods=["GET"])
 def list_films():
-    """Public: the film catalogue, each film with its nested offers (services)."""
+    """The film catalogue, each film with its nested offers (services).
+
+    Keyed, but at the read tier: accepts READ_API_KEY as well as the admin
+    key, so a consumer can be given the catalogue without being given the
+    ability to change it. See _check_auth.
+    """
+    auth_error = _check_auth(allow_read_key=True)
+    if auth_error:
+        return auth_error
+
     year = request.args.get("year")
     if year is not None:
         try:
@@ -144,7 +180,11 @@ def list_films():
 
 @app.route("/films/<int:film_id>", methods=["GET"])
 def get_film(film_id):
-    """Public: one film with its nested offers."""
+    """One film with its nested offers. Read tier, as GET /films is."""
+    auth_error = _check_auth(allow_read_key=True)
+    if auth_error:
+        return auth_error
+
     try:
         film = store.get_film(film_id)
     except StoreError as exc:
@@ -215,6 +255,12 @@ def delete_film(film_id):
     return "", 204
 
 
+def _scrape_failure_entry(film, result):
+    """One film's inline failure record in a batch refresh summary."""
+    return {"film_id": film["id"], "title": film["title"],
+            "error": result["error"], "refreshed": False}
+
+
 def _refresh_film(film):
     """Scrape one film and replace its services -- only on a successful scrape.
 
@@ -271,11 +317,34 @@ def refresh_all_films():
         films = store.list_films()
         pairs = [(f["title"], f.get("justwatch_url")) for f in films]
         results = scrape_titles(pairs)
+
+        # Scrape everything and decide whether the run is trustworthy BEFORE
+        # writing anything -- the guard below is worthless if half the
+        # catalogue has already been overwritten by the time it runs.
+        scraped = [(film, result["service"])
+                   for film, result in zip(films, results) if "error" not in result]
+
+        # A film here and there genuinely streams nowhere. Every single film
+        # streaming nowhere is a broken scrape, not a catalogue that emptied
+        # overnight -- and applying it would erase the one thing the site is
+        # for. Refuse the whole run rather than write a single row.
+        if scraped and not any(offers for _, offers in scraped):
+            return jsonify({
+                "films": len(films),
+                "refreshed": 0,
+                "error": "Refused: the scrape found no streaming offers for any of the {} "
+                         "films it could read, which means the scrape failed rather than "
+                         "every film leaving every service. Nothing was changed.".format(len(scraped)),
+                # The films that failed outright are the diagnostic an admin
+                # needs at exactly this moment, so don't swallow them.
+                "results": [_scrape_failure_entry(f, r)
+                            for f, r in zip(films, results) if "error" in r],
+            }), 502
+
         summary = []
         for film, result in zip(films, results):
             if "error" in result:
-                summary.append({"film_id": film["id"], "title": film["title"],
-                                "error": result["error"], "refreshed": False})
+                summary.append(_scrape_failure_entry(film, result))
                 continue
             count = store.replace_services(film["id"], result["service"])
             store.update_film(film["id"], {})
