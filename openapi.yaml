@@ -26,6 +26,8 @@ tags:
     description: The Supabase-backed film catalogue and offer refresh
   - name: Scrape
     description: Ad-hoc JustWatch scraping (stateless, persists nothing)
+  - name: Me
+    description: The signed-in user's own data, authenticated with their Supabase access token
 
 paths:
   /api/health:
@@ -577,8 +579,89 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /me/liked:
+    get:
+      operationId: getLiked
+      tags: [Me]
+      summary: The caller's liked films
+      description: >
+        Returns the liked films of the user the access token belongs to, keyed
+        by year. Authenticated with a Supabase access token, not `X-API-Key`.
+      security:
+        - UserToken: []
+      responses:
+        "200":
+          description: The user's likes (`{}` if none).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LikedResponse"
+              example:
+                liked:
+                  "2024": ["Trick R Treat"]
+        "401":
+          $ref: "#/components/responses/UserUnauthorized"
+    put:
+      operationId: likeFilm
+      tags: [Me]
+      summary: Like a film
+      description: >
+        Adds one film to the caller's likes. The title is matched against the
+        catalogue ignoring case and stored as the catalogue spells it; `year`
+        is only needed when the title is on more than one year's list.
+        Idempotent: liking a liked film changes nothing. The user is always the
+        one the token belongs to; any `user_id` in the body is ignored.
+      security:
+        - UserToken: []
+      requestBody:
+        $ref: "#/components/requestBodies/LikeTarget"
+      responses:
+        "200":
+          $ref: "#/components/responses/LikeResult"
+        "400":
+          $ref: "#/components/responses/LikeBadRequest"
+        "401":
+          $ref: "#/components/responses/UserUnauthorized"
+        "404":
+          $ref: "#/components/responses/LikeNotFound"
+        "409":
+          $ref: "#/components/responses/LikeAmbiguous"
+    delete:
+      operationId: unlikeFilm
+      tags: [Me]
+      summary: Unlike a film
+      description: >
+        Removes one film from the caller's likes. Idempotent: unliking a film
+        that isn't liked changes nothing. A title that has since left the
+        catalogue (renamed or dropped) can still be removed if it is in the
+        user's likes.
+      security:
+        - UserToken: []
+      requestBody:
+        $ref: "#/components/requestBodies/LikeTarget"
+      responses:
+        "200":
+          $ref: "#/components/responses/LikeResult"
+        "400":
+          $ref: "#/components/responses/LikeBadRequest"
+        "401":
+          $ref: "#/components/responses/UserUnauthorized"
+        "404":
+          $ref: "#/components/responses/LikeNotFound"
+        "409":
+          $ref: "#/components/responses/LikeAmbiguous"
+
 components:
   securitySchemes:
+    UserToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        A Supabase access token for the signed-in user, sent as
+        `Authorization: Bearer <token>`. It is forwarded to Supabase, which
+        validates it, and row-level security limits the request to that
+        user's own row. Tokens expire after an hour.
     ApiKeyAuth:
       type: apiKey
       in: header
@@ -599,7 +682,86 @@ components:
         Note that a browser-based third-party client would also need CORS
         headers, which this service deliberately does not send.
 
+  requestBodies:
+    LikeTarget:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [title]
+            properties:
+              title:
+                type: string
+                example: "Trick R Treat"
+              year:
+                type: integer
+                description: Only needed when the title is on more than one year's list.
+                example: 2024
+
+  responses:
+    UserUnauthorized:
+      description: No bearer token, or Supabase rejected it (invalid or expired).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    LikeBadRequest:
+      description: Missing `title`, non-integer `year`, or a body that isn't a JSON object.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    LikeNotFound:
+      description: No film with that title (in that year, if given).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    LikeAmbiguous:
+      description: The title is on more than one year's list; pass `year`.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    LikeResult:
+      description: The film acted on, and the user's likes after the change.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [film, liked]
+            properties:
+              film:
+                type: object
+                properties:
+                  year:
+                    type: integer
+                  title:
+                    type: string
+              liked:
+                $ref: "#/components/schemas/LikedFilms"
+          example:
+            film: {year: 2024, title: "Trick R Treat"}
+            liked:
+              "2024": ["Trick R Treat"]
+
   schemas:
+    LikedFilms:
+      type: object
+      description: Liked film titles keyed by year.
+      additionalProperties:
+        type: array
+        items:
+          type: string
+
+    LikedResponse:
+      type: object
+      required: [liked]
+      properties:
+        liked:
+          $ref: "#/components/schemas/LikedFilms"
+
     HealthResponse:
       type: object
       required: [status]

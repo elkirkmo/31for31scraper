@@ -208,3 +208,115 @@ def replace_services(film_id, services):
         id_list = ",".join(str(i) for i in old_ids)
         _request("DELETE", "services", params={"id": "in.({})".format(id_list)})
     return len(rows)
+
+
+# --- Per-user data: likes ---------------------------------------------------
+#
+# Everything above runs as the service role. Everything below runs as the
+# *user*: the caller's Supabase access token is forwarded to Supabase as-is,
+# alongside the publishable key, so Supabase itself validates the token and
+# the progress table's row-level security decides what it may touch. This
+# service never verifies a user JWT itself and never uses the service-role key
+# on these paths -- if it did, a bug here could write anybody's row.
+
+
+class AuthError(Exception):
+    """The caller's access token is missing, invalid, or expired."""
+
+
+def _user_config():
+    url = os.environ.get("SUPABASE_URL") or os.environ.get("PUBLIC_SUPABASE_URL")
+    key = (os.environ.get("SUPABASE_PUBLISHABLE_KEY")
+           or os.environ.get("PUBLIC_SUPABASE_PUBLISHABLE_KEY"))
+    if not url or not key:
+        raise StoreError(
+            "SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY must be configured on the server"
+        )
+    return url.rstrip("/"), key
+
+
+def _user_request(method, path, token, *, params=None, json=None, prefer=None):
+    base, key = _user_config()
+    headers = {
+        "apikey": key,
+        "Authorization": "Bearer {}".format(token),
+        "Accept": "application/json",
+    }
+    if json is not None:
+        headers["Content-Type"] = "application/json"
+    if prefer:
+        headers["Prefer"] = prefer
+    try:
+        resp = requests.request(
+            method, "{}/{}".format(base, path),
+            headers=headers, params=params, json=json, timeout=REQUEST_TIMEOUT,
+        )
+    except requests.RequestException as exc:
+        raise StoreError("Supabase request failed: {}".format(exc))
+    if resp.status_code in (401, 403):
+        raise AuthError("invalid or expired access token")
+    if not resp.ok:
+        raise StoreError(
+            "Supabase {} {} -> {}: {}".format(method, path, resp.status_code, resp.text[:300]),
+            status_code=resp.status_code,
+        )
+    if resp.status_code == 204 or not resp.content:
+        return None
+    return resp.json()
+
+
+def user_id_for(token):
+    """The id of the user `token` belongs to, as validated by Supabase Auth."""
+    user = _user_request("GET", "auth/v1/user", token)
+    if not user or not user.get("id"):
+        raise AuthError("invalid or expired access token")
+    return user["id"]
+
+
+def find_films_by_title(title):
+    """Catalogue films whose title matches, ignoring case and outer spaces.
+
+    Matched here rather than with PostgREST's ilike, whose % and _ wildcards
+    would need escaping out of real titles. The catalogue is a few dozen rows.
+    """
+    wanted = title.strip().casefold()
+    rows = _request("GET", "films", params={"select": "year,title"}) or []
+    return [r for r in rows if r["title"].casefold() == wanted]
+
+
+def get_liked(token, user_id):
+    """The user's liked films as {year: [title, ...]}, {} if they have none."""
+    rows = _user_request(
+        "GET", "rest/v1/progress", token,
+        params={"select": "liked", "user_id": "eq.{}".format(user_id)},
+    )
+    return (rows[0].get("liked") if rows else None) or {}
+
+
+def set_liked(token, user_id, year, title, liked, current):
+    """Add or remove one film from `current` (the user's likes as just read
+    with get_liked) and write the result back; returns the new map.
+
+    Idempotent by design -- liking a liked film or unliking an unliked one is
+    a no-op -- so a retried request can't flip the state back. A read then an
+    upsert rather than one atomic statement: two concurrent writes from the
+    same user can lose one, the same trade-off `watched` already makes.
+    The upsert sends only `liked`, so the row's `watched` is left alone.
+    """
+    key = str(year)
+    titles = [t for t in current.get(key, []) if t != title]
+    if liked:
+        titles.append(title)
+    updated = dict(current)
+    if titles:
+        updated[key] = titles
+    else:
+        updated.pop(key, None)
+
+    _user_request(
+        "POST", "rest/v1/progress", token,
+        params={"on_conflict": "user_id"},
+        json={"user_id": user_id, "liked": updated},
+        prefer="resolution=merge-duplicates,return=minimal",
+    )
+    return updated

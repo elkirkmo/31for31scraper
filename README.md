@@ -45,6 +45,8 @@ Edit `.env` and set:
   security, so it's server-only; never expose it to a browser.
 - `READ_API_KEY` — optional, and unset by default. A second key that
   authorises the read endpoints only. See the API section below.
+- `SUPABASE_PUBLISHABLE_KEY` — the project's publishable key, used only by
+  the `/me` endpoints (see below). Public by design.
 
 ## Running locally
 
@@ -127,6 +129,35 @@ curl -X PATCH -H "X-API-Key: $ADMIN_API_KEY" -H "Content-Type: application/json"
   http://127.0.0.1:5000/films/20
 curl -X POST -H "X-API-Key: $ADMIN_API_KEY" http://127.0.0.1:5000/films/20/refresh
 ```
+
+### A user's likes: `/me/liked`
+
+Per-user, so authenticated with the user's **Supabase access token**
+(`Authorization: Bearer ...`), not `X-API-Key`. The token is forwarded to
+Supabase with the publishable key; Supabase validates it and row-level
+security confines the request to that user's own `progress` row. The user id
+always comes from the token, never the request body.
+
+- `GET /me/liked` — `{"liked": {"2024": ["Trick R Treat"]}}`
+- `PUT /me/liked` — like a film. Body `{"title": ..., "year"?: ...}`; the
+  title is matched ignoring case. `year` is only needed when the title is on
+  more than one year's list (`409` otherwise). Unknown title → `404`.
+- `DELETE /me/liked` — unlike, same body. Also removes a title that has since
+  left the catalogue, so a renamed film can't get stuck in someone's likes.
+
+Both writes are idempotent, and return `{"film": {...}, "liked": {...}}`.
+
+```bash
+curl -X PUT https://31for31scraper.vercel.app/me/liked \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Trick R Treat"}'
+```
+
+Access tokens expire after an hour. To get one, sign in on the site and take
+`access_token` from the `sb-<project>-auth-token` cookie: strip the `base64-`
+prefix and base64url-decode the rest to JSON. A long session is split across
+`sb-<project>-auth-token.0`, `.1`, … — join those in order first.
 
 ### `GET /api/health`
 
@@ -215,7 +246,9 @@ and `app.py`. Configured in [`vercel.json`](vercel.json) with
 tier including Hobby; the concurrent scraping in `scraper.py` keeps a full
 run to a few seconds in practice, well under that.
 
-Before deploying: set `ADMIN_API_KEY` in the Vercel project's Environment
+Before deploying: set `ADMIN_API_KEY`, `SUPABASE_URL`,
+`SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_PUBLISHABLE_KEY` in the Vercel
+project's Environment
 Variables (Settings → Environment Variables). `.env` is gitignored and
 never gets deployed, so this is the only place the production secret
 lives.
@@ -229,7 +262,11 @@ API postdates that audit; the notes below cover its main surface
 (service-role key handling, mass-assignment allow-listing, PostgREST instead
 of raw SQL), but it hasn't had a full dedicated audit pass.
 
-- **Every endpoint except `/`, `/openapi.yaml` and `/api/health` requires a
+- **`/me/*` is authenticated by the user's own Supabase access token**, which
+  is passed through to Supabase rather than verified here, together with the
+  publishable key — never the service-role key — so RLS is what decides which
+  row a request can touch. `X-API-Key` is not accepted there.
+- **Every other endpoint except `/`, `/openapi.yaml` and `/api/health` requires a
   key** via the `X-API-Key` header, compared with `hmac.compare_digest`
   (constant-time — plain `!=` leaks timing information proportional to how
   many leading characters match). Writes and refreshes take `ADMIN_API_KEY`

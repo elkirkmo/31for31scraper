@@ -360,5 +360,105 @@ def refresh_all_films():
     })
 
 
+# --- /me: the calling user's own data ----------------------------------------
+#
+# Authenticated by the user's Supabase access token, not X-API-Key: the token
+# is the only thing that says whose row this is, and it is forwarded to
+# Supabase rather than checked here (see supabase_store's per-user section).
+# The user id therefore always comes from the validated token -- never from
+# the request body -- so a caller can only ever read or change their own likes.
+
+def _bearer_token():
+    header = request.headers.get("Authorization", "")
+    scheme, _, token = header.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        return None
+    return token.strip()
+
+
+def _unauthorized_user():
+    return jsonify({"error": "Authorization: Bearer <Supabase access token> is required"}), 401
+
+
+def _resolve_like_target(body, liked, *, allow_unlisted):
+    """Work out which (year, title) a like request means.
+
+    Returns ((year, title), None) or (None, error_response). The title is
+    matched against the catalogue case-insensitively and stored as the
+    catalogue spells it. "year" is only needed when a title appears in more
+    than one year's list. With allow_unlisted (unliking), a title that is no
+    longer in the catalogue -- renamed or dropped -- can still be removed if
+    it's in the user's likes, or it would be stuck there forever.
+    """
+    title = body.get("title")
+    if not isinstance(title, str) or not title.strip():
+        return None, (jsonify({"error": '"title" is required'}), 400)
+    year = body.get("year")
+    if year is not None and (not isinstance(year, int) or isinstance(year, bool)):
+        return None, (jsonify({"error": '"year" must be an integer'}), 400)
+
+    matches = [(f["year"], f["title"]) for f in store.find_films_by_title(title)]
+    if allow_unlisted and not matches:
+        wanted = title.strip().casefold()
+        matches = [(int(y), t) for y, titles in liked.items()
+                   for t in titles if t.casefold() == wanted]
+    if year is not None:
+        matches = [m for m in matches if m[0] == year]
+
+    if not matches:
+        where = " in {}".format(year) if year is not None else ""
+        return None, (jsonify({"error": "no film titled {!r}{}".format(title.strip(), where)}), 404)
+    if len(matches) > 1:
+        years = ", ".join(str(y) for y, _ in sorted(matches))
+        return None, (jsonify({"error": "{!r} is on more than one year's list ({}); "
+                                        'pass "year" to pick one'.format(title.strip(), years)}), 409)
+    return matches[0], None
+
+
+@app.route("/me/liked", methods=["GET"])
+def get_liked():
+    """The caller's liked films, as {year: [title, ...]}."""
+    token = _bearer_token()
+    if not token:
+        return _unauthorized_user()
+    try:
+        user_id = store.user_id_for(token)
+        return jsonify({"liked": store.get_liked(token, user_id)})
+    except store.AuthError as exc:
+        return jsonify({"error": str(exc)}), 401
+    except StoreError as exc:
+        return _store_error_response(exc)
+
+
+@app.route("/me/liked", methods=["PUT", "DELETE"])
+def set_liked():
+    """Like (PUT) or unlike (DELETE) one film. Body: {"title": ..., "year"?: ...}.
+
+    Both are idempotent: PUT on a liked film or DELETE on an unliked one
+    succeeds without changing anything.
+    """
+    token = _bearer_token()
+    if not token:
+        return _unauthorized_user()
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "request body must be a JSON object"}), 400
+
+    liking = request.method == "PUT"
+    try:
+        user_id = store.user_id_for(token)
+        current = store.get_liked(token, user_id)
+        target, error = _resolve_like_target(body, current, allow_unlisted=not liking)
+        if error:
+            return error
+        year, title = target
+        updated = store.set_liked(token, user_id, year, title, liking, current)
+    except store.AuthError as exc:
+        return jsonify({"error": str(exc)}), 401
+    except StoreError as exc:
+        return _store_error_response(exc)
+    return jsonify({"film": {"year": year, "title": title}, "liked": updated})
+
+
 if __name__ == "__main__":
     app.run(debug=True)
